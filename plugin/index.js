@@ -9,6 +9,7 @@
 import { BASKET, BENCH, UNIVERSE, basketCodes, buildPanel, computeSignals, fundDetail, fundSeries, groupSeries, heatmap, managerView, sectorMomentum } from './lib/analyze.js'
 import { compactToDash, fetchSSELatest, fetchSharesChunked } from './lib/sources.js'
 import { Store } from './lib/store.js'
+import { marketTemperature } from './lib/market.js'
 import { fetchHolderStructure } from './lib/wind.js'
 import { fmtDate, query, toObjects } from './lib/tushare.js'
 
@@ -216,6 +217,16 @@ export function apply(ctx, config = {}) {
       ...pt,
       benchClose: benchClose.get(pt.date.replace(/-/g, '')) ?? null,
     }))
+    // 市场温度：描述性指标，失败不影响主看板
+    let temperature = null
+    if (store?.pool) {
+      try {
+        temperature = await marketTemperature(store.pool, fmtDate(allDates[allDates.length - 1]))
+      } catch {
+        temperature = null
+      }
+    }
+
     const funds = fundDetail(trimmed, 5, names)
     const gSeries = groupSeries(trimmed, Math.min(lookbackDays, 120))
     const fSeries = fundSeries(trimmed, Math.min(lookbackDays, 120))
@@ -268,6 +279,7 @@ export function apply(ctx, config = {}) {
       holders,
       momentum,
       managers,
+      temperature,
       heatmap: heat,
       seriesGroups: gSeries,
       seriesFund: fSeries,

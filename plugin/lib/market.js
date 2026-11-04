@@ -1,0 +1,153 @@
+/**
+ * 市场温度：描述性情绪指标（第二档）。
+ *
+ * ⚠️ 这些指标只用于「解释当下状态」，**不参与任何评分、不做方向预测**。
+ *
+ * 依据：近三年非重叠样本（每 20 个交易日取 1 个独立观测）对沪深300 未来 20 日收益
+ * 做双样本检验，成交额 / 两融 / 主力净流入等候选全部不显著（|t| < 2）。
+ * 分年度看方向还会翻转（成交额 2024 有效 +5.17pp，2026 反向 -2.36pp）。
+ * 唯独 ETF 净申购通过检验，所以评分只由它驱动。
+ *
+ * 因此这里输出的是"温度计"，不是"信号灯"。
+ */
+
+/**
+ * 各指标最少需要多少天数据才认为可用。
+ *
+ * 涨停池 / 炸板池只有 2026-04 起的数据（约 19 个交易日/月），30 天窗口内通常
+ * 只有 18~19 天，用 20 天做门槛会让这些指标永远不显示。10 天足以算分位。
+ */
+const MIN_DAYS = 10
+
+function pct(a, b) {
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) return null
+  return ((a - b) / Math.abs(b)) * 100
+}
+
+function mean(arr) {
+  const v = arr.filter((x) => Number.isFinite(x))
+  return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null
+}
+
+function percentileRank(series, value) {
+  const v = series.filter((x) => Number.isFinite(x))
+  if (v.length < MIN_DAYS || !Number.isFinite(value)) return null
+  const below = v.filter((x) => x <= value).length
+  return (below / v.length) * 100
+}
+
+/**
+ * 读市场温度。任何一项失败都返回 null，不影响主看板。
+ *
+ * @param {import('pg').Pool} pool 已打开的连接池
+ * @param {string} asOf 截止交易日 cat 'YYYY-MM-DD'
+ */
+export async function marketTemperature(pool, asOf) {
+  if (!pool) return null
+  const out = { asOf, items: [], note: null }
+  const push = (key, label, value, unit, extra = {}) => {
+    if (value === null || !Number.isFinite(value)) return
+    out.items.push({ key, label, value, unit, ...extra })
+  }
+
+  try {
+    // ── 1. 涨停 / 炸板 / 连板：短线情绪温度 ──
+    const zt = await pool.query(
+      `SELECT trade_date,
+              count(*)::int AS limit_up
+         FROM zt_pool
+        WHERE trade_date <= $1::date AND trade_date > $1::date - INTERVAL '45 days'
+        GROUP BY trade_date ORDER BY trade_date`,
+      [asOf],
+    )
+    if (zt.rows.length >= MIN_DAYS) {
+      const today = zt.rows[zt.rows.length - 1]
+      const hist = zt.rows.slice(0, -1).map((r) => Number(r.limit_up))
+      push('limitUp', '涨停家数', Number(today.limit_up), '家', {
+        rank: percentileRank(hist, Number(today.limit_up)),
+        hint: '短线情绪温度，不预测方向',
+      })
+    }
+
+    const brk = await pool.query(
+      `SELECT trade_date, count(*)::int AS broken
+         FROM ths_limit_break
+        WHERE trade_date <= $1::date AND trade_date > $1::date - INTERVAL '45 days'
+        GROUP BY trade_date ORDER BY trade_date`,
+      [asOf],
+    )
+    if (brk.rows.length >= MIN_DAYS) {
+      const today = brk.rows[brk.rows.length - 1]
+      const hist = brk.rows.slice(0, -1).map((r) => Number(r.broken))
+      push('limitBreak', '炸板家数', Number(today.broken), '家', {
+        rank: percentileRank(hist, Number(today.broken)),
+        hint: '越高说明封板意愿越弱',
+      })
+    }
+
+    // ── 2. 涨跌家数比：当日赚钱效应 ──
+    const adv = await pool.query(
+      `SELECT trade_date,
+              sum(CASE WHEN pct_chg > 0 THEN 1 ELSE 0 END)::int AS up,
+              sum(CASE WHEN pct_chg < 0 THEN 1 ELSE 0 END)::int AS down
+         FROM stock_daily
+        WHERE trade_date = $1::date
+        GROUP BY trade_date`,
+      [asOf],
+    )
+    if (adv.rows.length) {
+      const { up, down } = adv.rows[0]
+      push('advanceDecline', '涨跌家数比', Number(up) / Math.max(1, Number(down)), '倍', {
+        hint: `${up} 涨 / ${down} 跌`,
+      })
+    }
+
+    // ── 3. 成交额：活跃度水位（相对 20 日均值）──
+    const amt = await pool.query(
+      `SELECT trade_date, sum(amount)::float AS amt
+         FROM stock_daily
+        WHERE trade_date <= $1::date AND trade_date > $1::date - INTERVAL '60 days'
+        GROUP BY trade_date ORDER BY trade_date`,
+      [asOf],
+    )
+    if (amt.rows.length >= MIN_DAYS) {
+      const series = amt.rows.map((r) => Number(r.amt) / 1e5) // 千元 → 亿元
+      const today = series[series.length - 1]
+      const base = mean(series.slice(-21, -1))
+      const ratio = base ? (today / base) * 100 : null
+      push('turnover', '全市场成交额', today, '亿', {
+        rank: percentileRank(series.slice(0, -1), today),
+        hint: ratio === null ? null : `为 20 日均值的 ${ratio.toFixed(0)}%`,
+      })
+    }
+
+    // ── 4. 两融余额：杠杆水位 ──
+    const margin = await pool.query(
+      `SELECT trade_date, sum(rzye)::float AS bal
+         FROM margin_detail
+        WHERE trade_date <= $1::date AND trade_date > $1::date - INTERVAL '45 days'
+        GROUP BY trade_date ORDER BY trade_date`,
+      [asOf],
+    )
+    if (margin.rows.length >= MIN_DAYS) {
+      const series = margin.rows.map((r) => Number(r.bal) / 1e8)
+      const today = series[series.length - 1]
+      const prev = series[series.length - 2]
+      // 两融余额是单调趋势量，余额接近历史新高时分位恒为 100，缺乏信息量。
+      // 改为展示「相对 20 日均值的位置」+ 环比变化。
+      const base20 = mean(series.slice(-21, -1))
+      push('margin', '两融余额', today / 1e4, '万亿', {
+        rank: base20 ? Math.min(100, Math.max(0, 50 + ((today / base20 - 1) * 100) * 5)) : null,
+        hint: `较前日 ${pct(today, prev)?.toFixed(2) ?? '—'}% · 20 日均值 ${((today / base20 - 1) * 100).toFixed(1)}%`,
+      })
+    }
+
+    out.note = out.items.length
+      ? '仅描述当日市场状态，不参与评分'
+      : '市场温度数据不可用（stock_wiki 采集未就绪）'
+    return out
+  } catch (err) {
+    out.note = `市场温度读取失败：${String(err?.message || err).slice(0, 80)}`
+    return out
+  }
+}

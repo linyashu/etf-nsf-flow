@@ -143,6 +143,7 @@ export interface Signals {
   concentration: Concentration
   anomalies: AnomalyDay[]
   series: FlowPoint[]
+  enhancement?: SignalsEnhancement
 }
 
 export interface FundRow {
@@ -190,6 +191,7 @@ export interface DashboardPayload {
   funds: FundRow[]
   holders: Holders
   momentum: MomentumRow[]
+  temperature?: MarketTemperature | null
   managers: ManagerGroup[]
   heatmap: Heatmap
   seriesGroups: Record<string, Array<{ date: string; inflow: number }>>
@@ -197,4 +199,46 @@ export interface DashboardPayload {
   benchSeries: Array<{ date: string; close: number | null }>
   basket: Record<string, string[]>
   bench: { code: string; name: string }
+}
+export interface EnhancementPercentile {
+  daily: number | null
+  sampleDays: number
+  marks: Array<{ p: number; value: number }>
+}
+
+export interface EnhancementPersistence {
+  streak: number
+  positiveDays: number
+  windowDays: number
+  avgPerDay: number
+  burstShare: number | null
+}
+
+export interface EnhancementDiffusion {
+  inflowGroups: number
+  totalGroups: number
+  ratio: number
+  broadInflow: number
+  broadTotal: number
+}
+
+export interface SignalsEnhancement {
+  percentile: EnhancementPercentile
+  persistence: EnhancementPersistence
+  diffusion: EnhancementDiffusion
+}
+
+export interface TemperatureItem {
+  key: string
+  label: string
+  value: number
+  unit: string
+  rank?: number | null
+  hint?: string | null
+}
+
+export interface MarketTemperature {
+  asOf: string
+  items: TemperatureItem[]
+  note: string | null
 }

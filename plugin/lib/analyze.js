@@ -144,6 +144,77 @@ const clamp = (x, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, x))
  * 计算各指数资金流与「国家队入场」综合评分。
  * 评分维度：净申购强度(45%) + 流入广度(30%) + 逆势托底(25%)
  */
+/**
+ * 第一档增强指标。
+ *
+ * 三者都只在「已有数据」上换算法，不引入新数据源：
+ *   1. 历史分位 —— 让「+1,381 亿」能读出罕见程度（近 5 年滚动口径）
+ *   2. 持续性   —— 区分「一次性脉冲」与「连续建仓」
+ *   3. 扩散度   —— 多少只指数同步流入，识别「只护大盘」还是「全面撒钱」
+ *
+ * 依据：近三年非重叠样本检验中，ETF 净申购极端组对未来 20 日收益 t=-2.18 / +2.91，
+ * 是唯一通过显著性检验的指标。因此增强它比新增指标更有价值。
+ */
+function buildEnhancement({ axisDates, dayMap, lookback, totalInflow, groups }) {
+  // ── 1. 历史分位：净申购金额在完整历史上的位置 ──
+  const dailySeries = axisDates.map((d) => ({ date: d, inflow: dayMap.get(d)?.inflow ?? 0 }))
+  const values = dailySeries.map((x) => x.inflow)
+  const sortedVals = [...values].sort((a, b) => a - b)
+  const pctRank = (v) => {
+    if (!sortedVals.length) return null
+    const below = sortedVals.filter((x) => x <= v).length
+    return round((below / sortedVals.length) * 100, 0)
+  }
+
+  const percentile = {
+    daily: pctRank(series_last(dailySeries)?.inflow ?? 0),
+    sampleDays: sortedVals.length,
+    // 分位参考点，让「88 分位」有直观锚
+    marks: [50, 80, 90, 95].map((p) => {
+      const idx = Math.min(sortedVals.length - 1, Math.floor((p / 100) * sortedVals.length))
+      return { p, value: round(sortedVals[idx] ?? 0, 1) }
+    }),
+  }
+
+  // ── 2. 持续性：净申购连续天数与强度 ──
+  let streak = 0
+  for (let i = dailySeries.length - 1; i >= 0; i -= 1) {
+    if (dailySeries[i].inflow > 0) streak += 1
+    else break
+  }
+  const windowVals = dailySeries.slice(-lookback).map((x) => x.inflow)
+  const positiveDays = windowVals.filter((v) => v > 0).length
+  const persistence = {
+    streak,
+    positiveDays,
+    windowDays: windowVals.length,
+    // 日均强度（亿元/交易日），用于区分「一天猛灌」与「天天小买」
+    avgPerDay: windowVals.length ? round(windowVals.reduce((a, b) => a + b, 0) / windowVals.length, 1) : 0,
+    // 集中度：单日最大值占窗口合计的比例，越高说明越依赖一次性脉冲
+    burstShare: totalInflow > 0
+      ? round((Math.max(...windowVals) / totalInflow) * 100, 0)
+      : null,
+  }
+
+  // ── 3. 扩散度：多少只指数在流入 ──
+  const positiveGroups = groups.filter((g) => g.inflowNd > 0)
+  const total = groups.length || 1
+  const diffusion = {
+    inflowGroups: positiveGroups.length,
+    totalGroups: total,
+    ratio: round(positiveGroups.length / total, 2),
+    // 宽基是否同步：国家队最典型的行为是同时买多个宽基
+    broadInflow: groups.filter((g) => g.sector === '宽基' && g.inflowNd > 0).length,
+    broadTotal: groups.filter((g) => g.sector === '宽基').length,
+  }
+
+  return { percentile, persistence, diffusion }
+}
+
+function series_last(arr) {
+  return arr.length ? arr[arr.length - 1] : null
+}
+
 export function computeSignals(panel, lookback = 5) {
   if (!panel.length) return { asOf: null, groups: [], sectorTotals: [], basket: {}, series: [], scores: {}, composite: 0 }
 
@@ -312,6 +383,16 @@ export function computeSignals(panel, lookback = 5) {
   const dailyVals = [...byDate.entries()].map(([date, v]) => ({ date, inflow: v.inflow }))
   const anomalies = detectAnomalies(dailyVals)
 
+  // ── 第一档增强：让绝对值有参照系 ──
+  // 只有「+1,381 亿」时读不出这是罕见还是常态，需要历史分位与结构分解。
+  const enhancement = buildEnhancement({
+    axisDates,
+    dayMap: byDate,
+    lookback,
+    totalInflow,
+    groups,
+  })
+
   return {
     asOf: ymd(asOf),
     lookback,
@@ -322,6 +403,7 @@ export function computeSignals(panel, lookback = 5) {
     sectorTotals,
     concentration,
     anomalies,
+    enhancement,
     basket: {
       inflowNd: totalInflow,
       inflowLatest: series.length ? series[series.length - 1].inflow : 0,

@@ -83,6 +83,34 @@ function Seg<T extends number | 'all'>({
   )
 }
 
+/** 分位条：把「历史第几分位」画成一条可读刻度。 */
+function PercentileBar({ pct, marks }: { pct: number | null; marks: Array<{ p: number; value: number }> }) {
+  if (pct === null) return null
+  const clamped = Math.max(0, Math.min(100, pct))
+  return (
+    <div className="mt-1.5">
+      <div className="relative h-1 rounded-sm bg-etf-layer2">
+        <div
+          className="absolute inset-y-0 left-0 rounded-sm bg-etf-in"
+          style={{ width: `${clamped}%` }}
+        />
+        {[50, 90].map((m) => (
+          <span
+            key={m}
+            aria-hidden
+            className="absolute inset-y-0 w-px bg-etf-line2"
+            style={{ left: `${m}%` }}
+          />
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between font-etf-mono text-meta tabular-nums text-etf-faint">
+        <span>低</span>
+        {marks.length > 0 && <span>90 分位 {nf(marks.find((m) => m.p === 90)?.value ?? 0, 0)} 亿</span>}
+      </div>
+    </div>
+  )
+}
+
 /** 标签 + 数值，用于合并后的紧凑区块。 */
 function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
@@ -272,6 +300,7 @@ function Dashboard() {
   // 归一化必须与显示范围一致：原先用全部 13 个板块取 max，导致前 8 项的条形普遍很短
   const momMax = Math.max(...momRows.map((m) => Math.abs(m.delta)), 1)
   const szLag = Boolean(fr?.shDate && fr?.szDate && fr.szDate < fr.shDate)
+  const en = s.enhancement
 
   return (
     <div className="etfflow-root h-full overflow-auto px-6 pb-12 pt-5">
@@ -367,6 +396,61 @@ function Dashboard() {
             <Metric label="净申购板块" value={`${inflowSectors} / ${sectors.length}`} />
           </div>
         </div>
+        {/* 证据链：把「+1,381 亿」放进历史坐标里，回答「这算多还是少」 */}
+        {en && (
+          <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 border-t border-etf-line1 pt-4 sm:grid-cols-3">
+            <div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-meta text-etf-faint">单日净申购历史分位</span>
+                <span className="font-etf-mono text-body tabular-nums text-etf-text">
+                  {en.percentile.daily === null ? '—' : `${en.percentile.daily}%`}
+                </span>
+              </div>
+              <PercentileBar pct={en.percentile.daily} marks={en.percentile.marks} />
+              <div className="mt-1 text-meta text-etf-faint">
+                {en.percentile.sampleDays} 个交易日样本
+              </div>
+            </div>
+
+            <div>
+              <div className="text-meta text-etf-faint">流入持续性</div>
+              <div className="mt-1 flex items-baseline gap-3">
+                <span className="font-etf-mono text-body tabular-nums text-etf-text">
+                  {en.persistence.streak > 0 ? `连续 ${en.persistence.streak} 天` : '未连续流入'}
+                </span>
+                <span className="font-etf-mono text-meta tabular-nums text-etf-muted">
+                  日均 {nf(en.persistence.avgPerDay, 0)} 亿
+                </span>
+              </div>
+              <div className="mt-1 text-meta text-etf-faint">
+                近 {en.persistence.windowDays} 日 {en.persistence.positiveDays} 天为正
+                {en.persistence.burstShare !== null && en.persistence.burstShare >= 50
+                  ? ` · 最大单日占 ${en.persistence.burstShare}%，偏一次性`
+                  : ''}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-meta text-etf-faint">流入扩散度</div>
+              <div className="mt-1 flex items-baseline gap-3">
+                <span className="font-etf-mono text-body tabular-nums text-etf-text">
+                  {en.diffusion.inflowGroups} / {en.diffusion.totalGroups} 指数
+                </span>
+                <span className="font-etf-mono text-meta tabular-nums text-etf-muted">
+                  宽基 {en.diffusion.broadInflow} / {en.diffusion.broadTotal}
+                </span>
+              </div>
+              <div className="mt-1 text-meta text-etf-faint">
+                {en.diffusion.ratio >= 0.7
+                  ? '全面流入，非护盘式集中'
+                  : en.diffusion.ratio >= 0.35
+                    ? '部分扩散，仍有选择性'
+                    : '高度集中，护盘式特征'}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 border-t border-etf-line1 pt-3 text-meta text-etf-faint">
           集中度 Top3 占正流入 {nf((s.concentration?.ratio ?? 0) * 100, 0)}%
           {s.concentration?.top3?.length
@@ -808,6 +892,55 @@ function Dashboard() {
           </section>
         </div>
       </Card>
+
+      {/* 市场温度：描述性指标，明确标注不参与评分（统计上不显著，见 lib/market.js） */}
+      {data.temperature?.items?.length ? (
+        <Card className="mb-3">
+          <Head
+            title="市场温度"
+            meta={
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden className="rounded-sm border border-etf-line2 px-1.5 py-0.5 text-[11px] leading-4">
+                  描述性
+                </span>
+                不参与评分 · 不预测方向
+              </span>
+            }
+          />
+          <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
+            {data.temperature.items.map((it) => (
+              <div key={it.key}>
+                <div className="text-meta text-etf-faint">{it.label}</div>
+                <div className="mt-1 flex items-baseline gap-1">
+                  <span className="font-etf-mono text-emph tabular-nums text-etf-text">
+                    {nf(it.value, it.unit === '亿' || it.unit === '万亿' ? 0 : 1)}
+                  </span>
+                  <span className="text-meta text-etf-faint">{it.unit}</span>
+                </div>
+                {typeof it.rank === 'number' && (
+                  <div className="mt-1.5">
+                    <div className="relative h-1 rounded-sm bg-etf-layer2">
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-sm bg-etf-muted"
+                        style={{ width: `${Math.max(2, Math.min(100, it.rank))}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 font-etf-mono text-meta tabular-nums text-etf-faint">
+                      近 30 日 {Math.round(it.rank)} 分位
+                    </div>
+                  </div>
+                )}
+                {it.hint && <div className="mt-1 text-meta leading-4 text-etf-faint">{it.hint}</div>}
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 border-t border-etf-line1 pt-3 text-meta text-etf-faint">
+            {data.temperature.note}
+            {' · '}
+            依据：近三年非重叠样本检验，这些指标对未来 20 日收益均不显著（|t| &lt; 2），故仅作状态参考
+          </div>
+        </Card>
+      ) : null}
 
       {/* 口径 */}
       <div className="border-t border-etf-line1 pt-4 text-meta leading-5 text-etf-muted">
