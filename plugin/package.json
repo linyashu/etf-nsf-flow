@@ -36,7 +36,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "tailwind": "tailwindcss --input styles/tailwind.css --output dist/tailwind.css --minify"
+    "tailwind": "tailwindcss --input styles/tailwind.css --output dist/tailwind.css --minify",
+    "check": "node scripts/check-metrics.mjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",

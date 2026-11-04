@@ -277,9 +277,38 @@ count(*) FILTER (WHERE pool = 'zb') AS broken
 相关背景：`stock_wiki` 项目用 11 年数据把 8 条择时规则删到只剩 1 条，
 其中「连续跌破年线」是严重反指（30 日 +2.10%, p<0.0001）。
 
+## 指标自检
+
+```bash
+cd plugin
+node scripts/check-metrics.mjs          # 完整检查，失败退出码 1
+node scripts/check-metrics.mjs --json   # 机器可读
+node scripts/check-metrics.mjs --asof 2026-11-03
+# npm run check
+```
+
+**改动任何指标、SQL、口径后必跑。** 它检查五类问题：
+
+| 类别 | 检查内容 |
+|---|---|
+| 结构 | 每个指标带齐 单位 / 小数位 / 样本量 / 数据日期 |
+| 自洽 | 组=板块=基金（4 个周期）、集中度=Top3÷正流入、评分=加权和、净申购=Δ份额×收盘 |
+| 范围 | 分位 ∈[0,100]、比例 ∈[0,1]、流入指数 ≤ 总数、涨+跌 ≤ 当日股票数 |
+| 新鲜 | 份额不落后 >3 天、带 dataDate 的指标落后 ≤3 天、52 只全有行情 |
+| **口径** | **静态断言**：涨停必须 `pool='zt'`、两融必须 `rzrqye`、净申购必须 `SHARE_TO_YI`、盘中必须 `Asia/Shanghai` |
+
+最后一类最重要。前三类都是数值检查，**抓不住「字段选错」**——
+把 `rzrqye` 换成 `rzye`、把 `pool` 过滤删掉，算出来的仍是合法数字，只是语义错了。
+项目三次数据事故（涨停 405、两融 2.28、日期未标）全部属于这一类，
+所以对这些关键 SQL 直接做源码断言防回归。
+
+实测：注入三种历史 bug，脚本分别报出
+「涨停按 pool='zt' 过滤 缺失」「两融用 rzrqye 而非 rzye」「评分 75.9 vs 重算 70.91」。
+
 ## 提交前自查
 
 - [ ] `tsc --noEmit` 通过
+- [ ] `node scripts/check-metrics.mjs` 通过（改了指标/SQL 时必跑）
 - [ ] `node scripts/build.mjs` 通过
 - [ ] 预览页三宽度（1440/1024/768）无横向溢出、无 console error
 - [ ] 未提交任何凭据（`git diff --cached | grep` 扫一遍）

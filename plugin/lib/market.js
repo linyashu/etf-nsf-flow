@@ -96,6 +96,7 @@ export async function marketTemperature(pool, asOf) {
         hint: '短线情绪温度，不预测方向',
       })
       push('limitDown', '跌停家数', dn, '家', {
+        dataDate: asOf,
         windowDays: hist.length,
         rank: percentileRank(hist.map((r) => Number(r.limit_down)), dn),
         hint: '恐慌情绪温度',
@@ -104,6 +105,7 @@ export async function marketTemperature(pool, asOf) {
       if (up + brk > 0) {
         const rate = (brk / (up + brk)) * 100
         push('brokenRate', '炸板率', rate, '%', {
+          dataDate: asOf,
           windowDays: hist.length,
           rank: percentileRank(
             hist.map((r) => {
