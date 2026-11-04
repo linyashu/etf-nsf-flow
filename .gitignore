@@ -1,0 +1,37 @@
+# ── Python ──
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# ── Node ──
+node_modules/
+pnpm-lock.yaml
+
+# ── 密钥与本机配置（绝不提交）──
+.env
+.env.local
+cordis.patch.yml
+cordis.patch.local.yml
+
+# ── 运行产物 ──
+logs/
+backups/
+data/*.json
+screenshots/
+.impeccable/
+.dsh/
+
+# ── 构建产物 ──
+plugin/client.js
+plugin/dist/
+plugin/.build/
+plugin/src/tailwind-css.generated.ts
+plugin/preview/bundle.js
+plugin/preview/etf-flow/
+
+# ── 系统 ──
+.DS_Store
+Thumbs.db

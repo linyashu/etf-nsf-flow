@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="ETF 资金流">
+  <defs>
+    <linearGradient id="etfg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2f9e6e"/>
+      <stop offset="100%" stop-color="#1b6f8c"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#etfg)"/>
+  <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="13" y="31" width="7" height="13" rx="2" stroke-width="2.4" opacity="0.55"/>
+    <rect x="24" y="24" width="7" height="20" rx="2" stroke-width="2.4" opacity="0.75"/>
+    <rect x="35" y="17" width="7" height="27" rx="2" stroke-width="2.4"/>
+    <path d="M14 22l9-5 8 4 12-9" stroke-width="2.6"/>
+    <path d="M37 12h6v6" stroke-width="2.6"/>
+  </g>
+</svg>

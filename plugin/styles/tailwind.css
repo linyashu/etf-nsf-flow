@@ -1,0 +1,70 @@
+@import "tailwindcss" source(none);
+
+/* 只扫描真正的源码。若让 Tailwind 自动扫描，
+ * 它会连自己上一次生成的 CSS 一起扫，旧类不断累积导致样式自引用膨胀。 */
+@source "../src/**/*.{ts,tsx}";
+/* 生成产物里含上一版 CSS 字符串，必须排除，否则类名自我累积 */
+@source not "../src/tailwind-css.generated.ts";
+
+/*
+ * 设计方向：克制、精确、像仪表读数。
+ * 世界：夜盘交易台与仪表 —— 中性色用宿主 token，不自己造色。
+ *
+ * 关键决策：颜色语义按 A 股习惯 —— 红=流入，绿=流出。
+ * 宿主 token 里 error 是红、success 是绿，这里按「本产品的含义」重新命名，
+ * 不改宿主的语义命名，只在本插件内做映射。
+ */
+@theme {
+  --color-etf-bg: var(--dsw-alias-bg-base);
+  --color-etf-layer1: var(--dsw-alias-bg-layer-1);
+  --color-etf-layer2: var(--dsw-alias-bg-layer-2);
+  --color-etf-overlay: var(--dsw-alias-bg-overlay);
+  --color-etf-line1: var(--dsw-alias-border-l1);
+  --color-etf-line2: var(--dsw-alias-border-l2);
+  --color-etf-text: var(--dsw-alias-label-primary);
+  --color-etf-muted: var(--dsw-alias-label-secondary);
+  --color-etf-faint: var(--dsw-alias-label-tertiary);
+  --color-etf-hover: var(--dsw-alias-interactive-bg-hover);
+
+  /* 红＝流入（强调色，全屏只出现在「钱在进来」这件事上） */
+  --color-etf-in: var(--dsw-alias-state-error-primary);
+  /* 绿＝流出，语义色，压暗使用 */
+  --color-etf-out: var(--dsw-alias-state-success-primary);
+
+  /*
+   * 文本专用的红/绿。宿主给的 #e5484d 在 layer1 上只有 4.49:1，hover 时 3.86:1，
+   * 12–13px 正文不达标。用 color-mix 混入 label-primary（深色主题下是近白、
+   * 浅色主题下是近黑），两个方向都能把对比度推上去，且不依赖主题判断。
+   */
+  --color-etf-intext: color-mix(in srgb, var(--dsw-alias-state-error-primary) 72%, var(--dsw-alias-label-primary));
+  --color-etf-outtext: color-mix(in srgb, var(--dsw-alias-state-success-primary) 72%, var(--dsw-alias-label-primary));
+
+  --font-etf-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 受限字号档位：只用这五档，不再出现 9.5 / 10.5 / 11.5 */
+  --text-meta: 12px;
+  --text-meta--line-height: 16px;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-emph: 14px;
+  --text-emph--line-height: 20px;
+  --text-title: 16px;
+  --text-title--line-height: 22px;
+  --text-stat: 28px;
+  --text-stat--line-height: 32px;
+  /* 判词行：比正文大一档，用于首屏结论句 */
+  --text-lead: 20px;
+  --text-lead--line-height: 32px;
+}
+
+@layer base {
+  .etfflow-root {
+    color: var(--dsw-alias-label-primary);
+    background: var(--dsw-alias-bg-base);
+  }
+  .etfflow-root *,
+  .etfflow-root *::before,
+  .etfflow-root *::after {
+    box-sizing: border-box;
+  }
+}

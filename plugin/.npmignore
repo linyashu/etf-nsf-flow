@@ -1,0 +1,9 @@
+src/
+styles/
+scripts/
+node_modules/
+dist/
+tsconfig.json
+tsdown.config.ts
+preview/
+.build/

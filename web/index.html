@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>国家队 ETF 资金流监测 · A股</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1728'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%2325d39b' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#070d18; --panel:#0d1728; --panel2:#111f34; --line:#1e3454; --text:#e8f0ff; --muted:#8298b8;
+    --accent:#3aa8ff; --accent2:#8b7bff; --good:#25d39b; --bad:#ff5f85; --warn:#ffc857; --chip:#132340;
+    --gold:#f5c518;
+  }
+  html[data-theme="light"]{
+    --bg:#eef3fa; --panel:#ffffff; --panel2:#f5f9ff; --line:#d8e2f0; --text:#0b1730; --muted:#5d728f;
+    --accent:#1b7fd0; --accent2:#6757e8; --good:#0d9d6f; --bad:#c73556; --warn:#a97600; --chip:#eaf1fb;
+    --gold:#a97c00;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font-family:"Inter",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1100px 480px at 12% -12%,rgba(58,168,255,.16),transparent),var(--bg);
+    color:var(--text);-webkit-font-smoothing:antialiased}
+  .mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .app{display:grid;grid-template-columns:212px 1fr;min-height:100%}
+  .side{border-right:1px solid var(--line);padding:16px 12px;background:linear-gradient(180deg,var(--panel),var(--panel2))}
+  .brand{font-weight:800;letter-spacing:.16em;font-size:11px;color:var(--muted);padding:0 8px 14px}
+  .brand b{display:block;font-size:15px;letter-spacing:.02em;color:var(--text);margin-top:4px}
+  .nav{display:grid;gap:4px}
+  .nav a{padding:9px 10px;border-radius:9px;color:var(--muted);font-weight:600;font-size:12.5px;
+    text-decoration:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+  .nav a:hover{background:var(--chip);color:var(--text)}
+  .nav a.on{background:var(--chip);color:var(--text);box-shadow:inset 2px 0 0 var(--accent)}
+  .nav a i{font-style:normal;font-size:10px;color:var(--muted)}
+  .sidefoot{margin-top:18px;padding:10px;border:1px solid var(--line);border-radius:10px;
+    font-size:10.5px;color:var(--muted);line-height:1.7;background:var(--chip)}
+  .sidefoot b{color:var(--text)}
+  .main{padding:14px 16px 40px;overflow:auto}
+  .top{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .status{display:flex;gap:8px;align-items:center;padding:6px 12px;border:1px solid var(--line);
+    border-radius:999px;background:var(--chip);font-size:11px;color:var(--muted)}
+  .dot{width:7px;height:7px;border-radius:99px;background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 22%,transparent)}
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);background:var(--chip);border-radius:999px;padding:3px}
+  .seg button{border:0;background:transparent;color:var(--muted);font-size:11px;font-weight:700;
+    padding:6px 11px;border-radius:999px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:var(--panel);color:var(--text)}
+  .btn{border:1px solid var(--line);background:var(--chip);color:var(--text);padding:6px 11px;
+    border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn:hover{border-color:var(--accent)}
+
+  .hero{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+  .card{border:1px solid var(--line);border-radius:13px;padding:12px 13px;position:relative;overflow:hidden;
+    background:linear-gradient(145deg,var(--panel),var(--panel2))}
+  .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .v{font-size:23px;font-weight:800;margin-top:5px;letter-spacing:-.01em}
+  .sub{font-size:10.5px;color:var(--muted);margin-top:5px;line-height:1.5}
+  .gauge-wrap{display:flex;align-items:center;gap:14px}
+  .gauge{position:relative;width:78px;height:78px;flex:none}
+  .gauge svg{transform:rotate(-90deg)}
+  .gauge .pc{position:absolute;inset:0;display:grid;place-items:center;font-size:18px;font-weight:800}
+  .regime{font-size:16px;font-weight:800;letter-spacing:.02em}
+  .pill{display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;
+    border:1px solid currentColor;margin-top:6px}
+
+  .layout{display:grid;grid-template-columns:1.55fr 1fr;gap:10px;margin-bottom:10px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  .chart{height:258px;width:100%;margin-top:8px}
+  .chart.tall{height:300px}
+  .h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .h h3{margin:0;font-size:12.5px;font-weight:800;letter-spacing:.02em}
+  .h .meta{font-size:10.5px;color:var(--muted)}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  th{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;
+    position:sticky;top:0;background:var(--panel);z-index:1}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:var(--chip)}
+  .pos{color:var(--good)} .neg{color:var(--bad)}
+  .badge{font-size:9.5px;padding:1.5px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-weight:700}
+  .badge.hot{color:var(--gold);border-color:color-mix(in srgb,var(--gold) 50%,var(--line))}
+  .scrollbox{max-height:352px;overflow:auto;margin-top:8px}
+  .scrollbox::-webkit-scrollbar{width:7px;height:7px}
+  .scrollbox::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+
+  .bars{display:grid;gap:9px;margin-top:12px}
+  .brow{display:grid;grid-template-columns:74px 1fr 78px;gap:9px;align-items:center;font-size:11.5px}
+  .brow .nm{color:var(--muted);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .track{height:7px;border-radius:99px;background:color-mix(in srgb,var(--line) 75%,transparent);overflow:hidden}
+  .track > i{display:block;height:100%;border-radius:99px;transition:width .5s ease}
+  .brow .nmv{text-align:right;font-weight:800}
+
+  .note{font-size:10.5px;color:var(--muted);line-height:1.7;margin-top:10px;
+    border-top:1px solid var(--line);padding-top:10px}
+  .note b{color:var(--text)}
+  .empty{display:grid;place-items:center;height:200px;color:var(--muted);font-size:12px}
+  @media (max-width:1180px){
+    .hero{grid-template-columns:1fr 1fr}
+    .layout,.grid2{grid-template-columns:1fr}
+    .app{grid-template-columns:64px 1fr}
+    .brand b,.brand span,.nav a span{display:none}
+  }
+  @media (max-width:720px){ .hero{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span>资金流监测</span><b>国家队 · ETF</b></div>
+    <nav class="nav">
+      <a class="on" data-jump="sec-signal"><span>总览信号</span><i>01</i></a>
+      <a data-jump="sec-flow"><span>净申购趋势</span><i>02</i></a>
+      <a data-jump="sec-group"><span>指数分布</span><i>03</i></a>
+      <a data-jump="sec-detail"><span>ETF 明细</span><i>04</i></a>
+      <a data-jump="sec-method"><span>口径说明</span><i>05</i></a>
+    </nav>
+    <div class="sidefoot">
+      数据源 <b>Tushare Pro</b><br>
+      份额口径 <b>基金总份额</b><br>
+      覆盖 <b id="side-cov">—</b>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div class="status">
+        <span class="dot"></span>
+        <span>数据截至 <b id="asof">—</b> · 生成 <b id="gen">—</b></span>
+      </div>
+      <div class="controls">
+        <div class="seg" id="range">
+          <button data-n="20" class="on">近20日</button>
+          <button data-n="40">近40日</button>
+          <button data-n="60">近60日</button>
+          <button data-n="all">全部</button>
+        </div>
+        <div class="seg" id="look">
+          <button data-k="1">1日</button>
+          <button data-k="5" class="on">5日</button>
+          <button data-k="10">10日</button>
+          <button data-k="20">20日</button>
+        </div>
+        <button class="btn" id="theme">◐ 主题</button>
+      </div>
+    </div>
+
+    <section class="hero" id="sec-signal">
+      <div class="card">
+        <div class="k">国家队入场信号</div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg width="78" height="78">
+              <circle cx="39" cy="39" r="33" fill="none" stroke="var(--line)" stroke-width="7"/>
+              <circle id="ring" cx="39" cy="39" r="33" fill="none" stroke="var(--accent)" stroke-width="7"
+                stroke-linecap="round" stroke-dasharray="207" stroke-dashoffset="207"/>
+            </svg>
+            <div class="pc mono" id="score">—</div>
+          </div>
+          <div>
+            <div class="regime" id="regime">—</div>
+            <div class="sub" id="regime-note">—</div>
+            <div class="pill" id="regime-pill">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="k">观察池净申购</div>
+        <div class="v mono" id="inflow-nd">—</div>
+        <div class="sub" id="inflow-nd-sub">—</div>
+      </div>
+      <div class="card">
+        <div class="k">最新单日净申购</div>
+        <div class="v mono" id="inflow-1d">—</div>
+        <div class="sub" id="inflow-1d-sub">—</div>
+      </div>
+      <div class="card">
+        <div class="k">流入广度 / 逆势度</div>
+        <div class="v mono" id="breadth">—</div>
+        <div class="sub" id="breadth-sub">—</div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="card">
+        <div class="h">
+          <h3>累计净申购 vs 沪深300</h3>
+          <div class="meta">柱=当日净申购(亿元) · 线=累计(亿元) · 面积=沪深300收盘</div>
+        </div>
+        <div class="chart tall" id="c-flow"></div>
+      </div>
+      <div class="card">
+        <div class="h">
+          <h3>信号构成</h3>
+          <div class="meta">0–100 分项</div>
+        </div>
+        <div class="chart" id="c-radar" style="height:258px"></div>
+      </div>
+    </section>
+
+    <section class="grid2" id="sec-group">
+      <div class="card">
+        <div class="h">
+          <h3>各指数净申购排行</h3>
+          <div class="meta" id="rank-meta">—</div>
+        </div>
+        <div class="bars" id="bars"></div>
+      </div>
+      <div class="card">
+        <div class="h">
+          <h3>指数净申购结构</h3>
+          <div class="meta">堆叠柱 · 单位 亿元</div>
+        </div>
+        <div class="chart" id="c-stack"></div>
+      </div>
+    </section>
+
+    <section class="card" id="sec-detail" style="margin-bottom:10px">
+      <div class="h">
+        <h3>ETF 明细 · 点击查看单只份额走势</h3>
+        <div class="meta" id="detail-meta">—</div>
+      </div>
+      <div class="scrollbox">
+        <table>
+          <thead>
+            <tr>
+              <th>ETF</th><th>跟踪指数</th><th>收盘</th><th>涨跌</th>
+              <th>单日净申购</th><th>区间净申购</th><th>最新份额</th><th>成交额</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="chart" id="c-fund" style="height:230px"></div>
+    </section>
+
+    <section class="card" id="sec-method">
+      <div class="h"><h3>口径说明</h3><div class="meta">为什么这样算</div></div>
+      <div class="note">
+        <b>净申购额 = Δ基金总份额 × 收盘价。</b>ETF 每日披露的基金总份额是申赎的直接结果：
+        份额增加意味着投资者真金白银申购、由管理人买成成分股，这是<b>增量资金</b>；
+        而成交额只反映二级市场换手，无法区分申购与对倒，因此不能用来判断国家队入场。<br>
+        <b>信号评分</b>由三项加权：净申购强度（近 N 日累计相对 60 日均值，45%）、
+        流入广度（净申购指数占比，30%）、逆势度（基准下跌日仍净申购的比例，25%）。
+        逆势托底是汇金类资金最典型的特征。<br>
+        <b>局限：</b>份额数据不含持有人身份，无法直接确认买方为汇金/证金；
+        宽基 ETF 巨量申赎是强相关性证据，而非直接持股披露。数据滞后一个交易日（T+1 晚更新）。
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="vendor/echarts.min.js"></script>
+<script>
+const DATA = window.__DATA__ || null;
+</script>
+<script>
+(function(){
+  const fmt = (v,d=2)=> (v==null||Number.isNaN(v)) ? '—' : Number(v).toLocaleString('zh-CN',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const sign = v => v>0?'pos':(v<0?'neg':'');
+  const arrow = v => v>0?'▲':(v<0?'▼':'·');
+
+  let D = null, rangeN = 20, lookK = 5;
+  const charts = {};
+
+  function themeColors(){
+    const cs = getComputedStyle(document.documentElement);
+    return {
+      text: cs.getPropertyValue('--text').trim(),
+      muted: cs.getPropertyValue('--muted').trim(),
+      line: cs.getPropertyValue('--line').trim(),
+      accent: cs.getPropertyValue('--accent').trim(),
+      accent2: cs.getPropertyValue('--accent2').trim(),
+      good: cs.getPropertyValue('--good').trim(),
+      bad: cs.getPropertyValue('--bad').trim(),
+      warn: cs.getPropertyValue('--warn').trim(),
+      panel: cs.getPropertyValue('--panel').trim(),
+      gold: cs.getPropertyValue('--gold').trim()
+    };
+  }
+
+  function sliceSeries(arr){
+    if(!arr) return [];
+    if(rangeN === 'all') return arr;
+    return arr.slice(-rangeN);
+  }
+
+  function renderHeader(){
+    const s = D.signals;
+    document.getElementById('asof').textContent = s.as_of || '—';
+    document.getElementById('gen').textContent = D.generated_at || '—';
+    const cov = D.data_coverage || {};
+    const sh = cov.etf_share || {};
+    document.getElementById('side-cov').textContent = sh.from ? `${sh.from} ~ ${sh.to}` : '—';
+
+    const score = s.composite ?? 0;
+    document.getElementById('score').textContent = score ? score.toFixed(0) : '—';
+    const ring = document.getElementById('ring');
+    const C = 2*Math.PI*33;
+    ring.setAttribute('stroke-dasharray', C);
+    ring.setAttribute('stroke-dashoffset', C*(1-score/100));
+    const col = score>=75?'var(--good)':score>=55?'var(--accent)':score>=35?'var(--warn)':'var(--bad)';
+    ring.setAttribute('stroke', col);
+
+    document.getElementById('regime').textContent = s.regime || '—';
+    document.getElementById('regime').style.color = col;
+    document.getElementById('regime-note').textContent = s.regime_note || '—';
+    const pill = document.getElementById('regime-pill');
+    pill.textContent = `综合 ${score.toFixed(1)} / 100`;
+    pill.style.color = col;
+
+    const b = s.basket || {};
+    document.getElementById('inflow-nd').textContent = (b.inflow_nd>0?'+':'') + fmt(b.inflow_nd) + ' 亿';
+    document.getElementById('inflow-nd').className = 'v mono ' + sign(b.inflow_nd);
+    document.getElementById('inflow-nd-sub').textContent = `近 ${lookK} 个交易日合计 · 强度 ${fmt(b.power,1)}x`;
+
+    document.getElementById('inflow-1d').textContent = (b.inflow_latest>0?'+':'') + fmt(b.inflow_latest) + ' 亿';
+    document.getElementById('inflow-1d').className = 'v mono ' + sign(b.inflow_latest);
+    document.getElementById('inflow-1d-sub').textContent = `对标 ${b.bench_name || '沪深300'}`;
+
+    const br = (b.breadth||0)*100, ct=(b.contrarian||0)*100;
+    document.getElementById('breadth').textContent = br.toFixed(0)+'% / '+ct.toFixed(0)+'%';
+    document.getElementById('breadth-sub').textContent = '广度=净申购指数占比 · 逆势=下跌日仍申购';
+  }
+
+  function renderFlow(){
+    const el = document.getElementById('c-flow');
+    if(!charts.flow) charts.flow = echarts.init(el, null, {renderer:'canvas'});
+    const c = themeColors();
+    const ser = sliceSeries(D.signals.series) || [];
+    const dates = ser.map(x=>x.date);
+    const inflow = ser.map(x=>x.inflow);
+    const cum = ser.map(x=>x.cum);
+    const bench = ser.map(x=>x.bench);
+
+    charts.flow.setOption({
+      backgroundColor:'transparent',
+      animationDuration:600,
+      grid:{left:52,right:54,top:30,bottom:34},
+      tooltip:{
+        trigger:'axis',
+        backgroundColor:c.panel, borderColor:c.line, textStyle:{color:c.text,fontSize:11},
+        axisPointer:{type:'cross',label:{backgroundColor:c.accent}},
+        formatter(ps){
+          const i = ps[0].dataIndex;
+          const b = bench[i];
+          return `<b>${dates[i]}</b><br>
+          当日净申购 <b>${inflow[i]>0?'+':''}${fmt(inflow[i])} 亿</b><br>
+          累计净申购 <b>${fmt(cum[i])} 亿</b><br>
+          沪深300 ${b==null?'—':fmt(b)+'%'}`;
+        }
+      },
+      legend:{data:['当日净申购','累计净申购','沪深300'],textStyle:{color:c.muted,fontSize:10},top:2,itemHeight:7,itemWidth:12},
+      xAxis:{type:'category',data:dates,axisLine:{lineStyle:{color:c.line}},
+        axisLabel:{color:c.muted,fontSize:9.5,formatter:v=>v.slice(5)},axisTick:{show:false}},
+      yAxis:[
+        {type:'value',name:'亿元',nameTextStyle:{color:c.muted,fontSize:9.5,align:'right'},
+         axisLabel:{color:c.muted,fontSize:9.5},splitLine:{lineStyle:{color:c.line,opacity:.4}},axisLine:{show:false}},
+        {type:'value',name:'指数',nameTextStyle:{color:c.muted,fontSize:9.5},
+         axisLabel:{color:c.muted,fontSize:9.5},splitLine:{show:false},scale:true,axisLine:{show:false}}
+      ],
+      series:[
+        {name:'当日净申购',type:'bar',data:inflow,barMaxWidth:14,
+         itemStyle:{color:p=>p.value>=0?c.good:c.bad,borderRadius:[2,2,0,0],opacity:.85}},
+        {name:'累计净申购',type:'line',data:cum,yAxisIndex:0,smooth:true,symbol:'none',
+         lineStyle:{width:2,color:c.accent},areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[
+           {offset:0,color:c.accent+'55'},{offset:1,color:c.accent+'00'}])}},
+        {name:'沪深300',type:'line',data:bench,yAxisIndex:1,smooth:true,symbol:'none',
+         lineStyle:{width:1.6,color:c.warn,opacity:.85}}
+      ]
+    });
+  }
+
+  function renderRadar(){
+    const el = document.getElementById('c-radar');
+    if(!charts.radar) charts.radar = echarts.init(el,null,{renderer:'canvas'});
+    const c = themeColors();
+    const sc = D.signals.scores || {};
+    const vals = [sc.inflow_power||0, sc.persistence||0, sc.contrarian||0];
+    charts.radar.setOption({
+      backgroundColor:'transparent',
+      tooltip:{backgroundColor:c.panel,borderColor:c.line,textStyle:{color:c.text,fontSize:11}},
+      radar:{
+        center:['50%','54%'],radius:'64%',
+        indicator:[
+          {name:'净申购强度',max:100},{name:'流入广度',max:100},{name:'逆势托底',max:100}
+        ],
+        axisName:{color:c.muted,fontSize:10},
+        splitLine:{lineStyle:{color:c.line}},
+        splitArea:{areaStyle:{color:['transparent',c.panel2+'88']}},
+        axisLine:{lineStyle:{color:c.line}}
+      },
+      series:[{
+        type:'radar',
+        data:[{value:vals,name:'信号',areaStyle:{color:c.accent+'44'},
+          lineStyle:{color:c.accent,width:2},itemStyle:{color:c.accent}}]
+      }]
+    });
+  }
+
+  function renderBars(){
+    const box = document.getElementById('bars');
+    const key = 'inflow_'+lookK+'d';
+    const gs = (D.signals.groups||[]).map(g=>({
+      ...g, val: (g.periods && g.periods[key] != null) ? g.periods[key] : g.inflow_nd
+    })).sort((a,b)=>b.val-a.val);
+    document.getElementById('rank-meta').textContent = `近 ${lookK} 日 · 单位 亿元`;
+    if(!gs.length){ box.innerHTML='<div class="empty">暂无数据</div>'; return; }
+    const max = Math.max(...gs.map(g=>Math.abs(g.val)), 1);
+    box.innerHTML = gs.map(g=>{
+      const w = Math.abs(g.val)/max*100;
+      const col = g.val>=0 ? 'var(--good)' : 'var(--bad)';
+      const v = (g.val>0?'+':'')+fmt(g.val);
+      return `<div class="brow">
+        <div class="nm" title="${g.group}">${g.group}</div>
+        <div class="track"><i style="width:${w}%;background:linear-gradient(90deg,${col}aa,${col})"></i></div>
+        <div class="nmv mono ${sign(g.val)}" style="text-align:right">${v}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderStack(){
+    const el = document.getElementById('c-stack');
+    if(!charts.stack) charts.stack = echarts.init(el,null,{renderer:'canvas'});
+    const c = themeColors();
+    const groups = Object.keys(D.series_groups||{});
+    // 对齐所有日期
+    const dateSet = new Set();
+    groups.forEach(g=> (D.series_groups[g]||[]).forEach(p=>dateSet.add(p.date)));
+    let dates = [...dateSet].sort();
+    if(rangeN!=='all') dates = dates.slice(-rangeN);
+
+    const palette = [c.accent,c.accent2,c.good,c.warn,c.bad,c.gold,'#4dd0e1','#ba68c8','#ff8a65','#aed581'];
+    const series = groups.map((g,i)=>{
+      const m = new Map((D.series_groups[g]||[]).map(p=>[p.date,p.inflow]));
+      return {
+        name:g, type:'bar', stack:'flow', barMaxWidth:18,
+        data:dates.map(d=>m.get(d) ?? 0),
+        itemStyle:{color:palette[i%palette.length],opacity:.88}
+      };
+    });
+
+    charts.stack.setOption({
+      backgroundColor:'transparent',
+      tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:c.panel,
+        borderColor:c.line,textStyle:{color:c.text,fontSize:11}},
+      legend:{type:'scroll',data:groups,textStyle:{color:c.muted,fontSize:9.5},top:0,itemHeight:7,itemWidth:10},
+      grid:{left:48,right:14,top:44,bottom:30},
+      xAxis:{type:'category',data:dates,axisLine:{lineStyle:{color:c.line}},
+        axisLabel:{color:c.muted,fontSize:9,formatter:v=>v.slice(5)},axisTick:{show:false}},
+      yAxis:{type:'value',name:'亿元',nameTextStyle:{color:c.muted,fontSize:9.5},
+        axisLabel:{color:c.muted,fontSize:9.5},splitLine:{lineStyle:{color:c.line,opacity:.4}},axisLine:{show:false}},
+      series
+    }, true);
+  }
+
+  function renderTable(){
+    const tb = document.getElementById('tbody');
+    const funds = (D.funds||[]).slice().sort((a,b)=>b.inflow_nd-a.inflow_nd);
+    document.getElementById('detail-meta').textContent = `共 ${funds.length} 只 · 按区间净申购排序`;
+    tb.innerHTML = funds.map(f=>{
+      const nd = f['inflow_'+lookK+'d'] ?? f.inflow_nd;
+      const hot = nd>=50 ? 'hot' : '';
+      return `<tr data-code="${f.code}">
+        <td><b>${f.name}</b> <span class="mono" style="color:var(--muted);font-size:10px">${f.code}</span></td>
+        <td style="text-align:left;color:var(--muted)">${f.group}</td>
+        <td class="mono">${fmt(f.close,3)}</td>
+        <td class="mono ${sign(f.pct_chg)}">${arrow(f.pct_chg)} ${fmt(f.pct_chg)}%</td>
+        <td class="mono ${sign(f.inflow_1d)}">${(f.inflow_1d>0?'+':'')+fmt(f.inflow_1d)}</td>
+        <td class="mono ${sign(nd)}"><span class="badge ${hot}">${(nd>0?'+':'')+fmt(nd)}</span></td>
+        <td class="mono" style="color:var(--muted)">${fmt(f.share,0)} 亿份</td>
+        <td class="mono" style="color:var(--muted)">${fmt(f.amount,0)} 亿</td>
+      </tr>`;
+    }).join('');
+    tb.querySelectorAll('tr').forEach(tr=>{
+      tr.onclick = ()=> renderFundChart(tr.dataset.code);
+    });
+  }
+
+  function renderFundChart(code){
+    const el = document.getElementById('c-fund');
+    if(!charts.fund) charts.fund = echarts.init(el,null,{renderer:'canvas'});
+    const c = themeColors();
+    const target = code || (D.funds&&D.funds[0]&&D.funds[0].code);
+    const arr = sliceSeries((D.series_fund||{})[target]||[]);
+    const name = (D.funds||[]).find(f=>f.code===target)?.name || target;
+    if(!arr.length){ charts.fund.clear(); return; }
+    charts.fund.setOption({
+      backgroundColor:'transparent',
+      title:{text:name+' · 份额与净申购',left:0,top:0,textStyle:{color:c.text,fontSize:11.5,fontWeight:600}},
+      tooltip:{trigger:'axis',backgroundColor:c.panel,borderColor:c.line,textStyle:{color:c.text,fontSize:11},
+        formatter(ps){
+          const i=ps[0].dataIndex;
+          return `<b>${arr[i].date}</b><br>份额 <b>${fmt(arr[i].share)} 亿份</b><br>
+          净申购 <b>${arr[i].inflow>0?'+':''}${fmt(arr[i].inflow)} 亿</b><br>收盘 ${fmt(arr[i].close,3)}`;
+        }},
+      legend:{data:['份额(亿份)','净申购(亿元)'],textStyle:{color:c.muted,fontSize:9.5},top:0,right:0,itemHeight:7,itemWidth:10},
+      grid:{left:50,right:48,top:32,bottom:28},
+      xAxis:{type:'category',data:arr.map(x=>x.date),axisLine:{lineStyle:{color:c.line}},
+        axisLabel:{color:c.muted,fontSize:9,formatter:v=>v.slice(5)},axisTick:{show:false}},
+      yAxis:[
+        {type:'value',name:'亿份',nameTextStyle:{color:c.muted,fontSize:9},
+         axisLabel:{color:c.muted,fontSize:9},splitLine:{lineStyle:{color:c.line,opacity:.4}},axisLine:{show:false},scale:true},
+        {type:'value',name:'亿元',nameTextStyle:{color:c.muted,fontSize:9},
+         axisLabel:{color:c.muted,fontSize:9},splitLine:{show:false},axisLine:{show:false}}
+      ],
+      series:[
+        {name:'份额(亿份)',type:'line',data:arr.map(x=>x.share),smooth:true,symbol:'none',
+         lineStyle:{width:2.2,color:c.accent},
+         areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[
+           {offset:0,color:c.accent+'44'},{offset:1,color:c.accent+'00'}])}},
+        {name:'净申购(亿元)',type:'bar',yAxisIndex:1,data:arr.map(x=>x.inflow),barMaxWidth:9,
+         itemStyle:{color:p=>p.value>=0?c.good:c.bad,opacity:.8}}
+      ]
+    }, true);
+  }
+
+  function renderAll(){
+    renderHeader(); renderFlow(); renderRadar(); renderBars(); renderStack(); renderTable();
+  }
+
+  function resizeAll(){ Object.values(charts).forEach(c=>c && c.resize()); }
+
+  // 主题切换
+  const html = document.documentElement;
+  const saved = localStorage.getItem('etf-theme');
+  if(saved) html.setAttribute('data-theme', saved);
+  document.getElementById('theme').onclick = ()=>{
+    const next = html.getAttribute('data-theme')==='dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('etf-theme', next);
+    setTimeout(()=>{ renderAll(); }, 30);
+  };
+
+  document.querySelectorAll('#range button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('#range button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      const n=b.dataset.n;
+      rangeN = n==='all'?'all':parseInt(n,10);
+      renderFlow(); renderStack();
+    };
+  });
+  document.querySelectorAll('#look button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('#look button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      lookK = parseInt(b.dataset.k,10);
+      renderHeader(); renderBars(); renderTable();
+    };
+  });
+
+  document.querySelectorAll('.nav a').forEach(a=>{
+    a.onclick = ()=>{
+      document.querySelectorAll('.nav a').forEach(x=>x.classList.remove('on'));
+      a.classList.add('on');
+      document.getElementById(a.dataset.jump)?.scrollIntoView({behavior:'smooth',block:'start'});
+    };
+  });
+
+  window.addEventListener('resize', resizeAll);
+
+  async function boot(){
+    try{
+      const r = await fetch('data.json', {cache:'no-store'});
+      D = await r.json();
+    }catch(e){
+      if(window.__DATA__) D = window.__DATA__;
+    }
+    if(!D){
+      document.querySelector('main').innerHTML =
+        '<div class="empty" style="height:60vh">未能加载 data.json，请先运行 python -m src.export</div>';
+      return;
+    }
+    renderAll();
+    if(D.funds && D.funds.length) renderFundChart(D.funds[0].code);
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

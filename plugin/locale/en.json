@@ -1,0 +1,9 @@
+{
+  "meta": {
+    "title": "State Fund Flow Monitor",
+    "description": "Tracks whether China's state funds are buying through broad-based ETF net creations, and which sectors the money flows into. Share growth means real subscriptions, not turnover."
+  },
+  "panel": {
+    "title": "State Fund"
+  }
+}

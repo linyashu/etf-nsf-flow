@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# 构建生成的 CSS 字符串模块
+src/tailwind-css.generated.ts
+preview/
+.build/

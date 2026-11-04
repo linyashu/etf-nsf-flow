@@ -1,0 +1,54 @@
+{
+  "name": "dsh-etf-nsf-flow",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "用宽基 ETF 份额净申购追踪国家队入场与板块资金流向",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib/tushare.js",
+    "lib/analyze.js",
+    "lib/sources.js",
+    "lib/store.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "slots"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "tailwind": "tailwindcss --input styles/tailwind.css --output dist/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "4.3.3",
+    "tsdown": "0.23.1",
+    "typescript": "~7.0.2"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}
