@@ -168,6 +168,35 @@ plugin_manager remove_bundle → install_bundle
 
 同类问题：0 值不要用「·」表示（会被读成无数据），直接用 `0.0`。
 
+### `zt_pool` 必须按 pool 字段过滤
+
+`zt_pool` 一张表装了 5 类股票，**不加过滤会把跌停和次新股都算成涨停**：
+
+| pool | 含义 | 11-03 家数 |
+|---|---|---|
+| `zt` | 涨停 | 48 |
+| `zb` | 炸板（触板未封住） | 34 |
+| `dt` | 跌停 | 17 |
+| `strong` | 强势股 | 144 |
+| `sub_new` | 次新股 | 162 |
+
+曾漏写 `WHERE pool = 'zt'`，把全部 405 行当成涨停，导致 11-03 报出
+「涨停 405 家」（真实 48 家，**错 8.4 倍**），还把 17 家跌停算进涨停数。
+
+**板块涨跌幅口径不用自己判断**：实测 `zt` 池主板 47 家涨幅 9.82~10.13（限 10%）、
+创业板 1 家 20.00（限 20%），tushare 的 `limit_list_d` 已按各板块限制正确判定，
+不存在「科创板/北交所 10%+ 被算成涨停」的问题。
+
+正确写法：
+
+```sql
+count(*) FILTER (WHERE pool = 'zt') AS limit_up,
+count(*) FILTER (WHERE pool = 'dt') AS limit_down,
+count(*) FILTER (WHERE pool = 'zb') AS broken
+```
+
+顺带：`炸板率 = zb / (zt + zb)` 比单看炸板数更能反映封板意愿，已加入市场温度。
+
 ### 时间的时区
 
 `generatedAt` 是 UTC ISO 串，展示前必须转本地时区，

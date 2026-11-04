@@ -553,7 +553,88 @@ function Dashboard() {
         </div>
       </Card>
 
-      {/* 盘中量能预警：份额是 T+1，这是唯一能当天看到的信号 */}
+      {/* 主图 + 资金流向 */}
+      <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[2.5fr_1fr]">
+        <Card>
+          <Head title="累计净申购与沪深300" meta="左轴 亿元 · 右轴 点 · 柱 当日净申购" />
+          <FlowChart series={flowSeries} anomalies={s.anomalies} />
+        </Card>
+
+        <Card>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="m-0 text-emph font-medium">
+              资金流向
+              <span className="ml-2 text-meta font-normal text-etf-faint">
+                {rankRows.length} 项 · 近 {lookK} 日 · 亿元
+              </span>
+            </h2>
+            <div
+              className="inline-flex items-center gap-1 rounded-lg bg-etf-layer2 p-1"
+              role="group"
+              aria-label="按板块或指数汇总"
+            >
+              {(
+                [
+                  ['sector', '板块'],
+                  ['group', '指数'],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={rankMode === k}
+                  onClick={() => setRankMode(k)}
+                  className={[
+                    'cursor-pointer rounded-md px-2 py-1 text-meta transition-colors duration-150',
+                    rankMode === k ? 'bg-etf-layer1 text-etf-text' : 'text-etf-muted hover:text-etf-text',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-2">
+            {verdictList.map((r) => (
+              <div key={r.name} className="grid grid-cols-[76px_1fr_68px] items-center gap-2">
+                <span className="truncate text-meta text-etf-muted" title={r.name}>
+                  {r.name}
+                </span>
+                <span className="block h-1 bg-etf-layer2">
+                  <span
+                    className="block h-1"
+                    style={{
+                      width: `${rankScale(r.val)}%`,
+                      background:
+                        r.val >= 0
+                          ? 'var(--dsw-alias-state-error-primary)'
+                          : 'var(--dsw-alias-state-success-primary)',
+                    }}
+                  />
+                </span>
+                <span className={`text-right font-etf-mono text-meta tabular-nums ${toneOf(r.val)}`}>
+                  {signed(r.val, 1)}
+                </span>
+              </div>
+            ))}
+          </div>
+          {rankRows.length > 15 && (
+            <div className="mt-3 flex items-center justify-between border-t border-etf-line1 pt-3">
+              <span className="text-meta text-etf-faint">{rankAll ? `全部 ${rankRows.length} 项` : '前 15 项'}</span>
+              <button
+                type="button"
+                onClick={() => setRankAll((v) => !v)}
+                className="cursor-pointer text-meta text-etf-muted transition-colors duration-150 hover:text-etf-text"
+              >
+                {rankAll ? '收起' : `展开全部 ${rankRows.length} 项`}
+              </button>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* 盘中量能预警：份额是 T+1，这是唯一能当天看到的信号。
+          位置在主图之后——先给趋势，再给「今天这一下」的快照。 */}
       {data.intraday && (
         <Card className="mb-3">
           <Head
@@ -678,86 +759,6 @@ function Dashboard() {
           </div>
         </Card>
       )}
-
-      {/* 主图 + 资金流向 */}
-      <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[2.5fr_1fr]">
-        <Card>
-          <Head title="累计净申购与沪深300" meta="左轴 亿元 · 右轴 点 · 柱 当日净申购" />
-          <FlowChart series={flowSeries} anomalies={s.anomalies} />
-        </Card>
-
-        <Card>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="m-0 text-emph font-medium">
-              资金流向
-              <span className="ml-2 text-meta font-normal text-etf-faint">
-                {rankRows.length} 项 · 近 {lookK} 日 · 亿元
-              </span>
-            </h2>
-            <div
-              className="inline-flex items-center gap-1 rounded-lg bg-etf-layer2 p-1"
-              role="group"
-              aria-label="按板块或指数汇总"
-            >
-              {(
-                [
-                  ['sector', '板块'],
-                  ['group', '指数'],
-                ] as const
-              ).map(([k, label]) => (
-                <button
-                  key={k}
-                  type="button"
-                  aria-pressed={rankMode === k}
-                  onClick={() => setRankMode(k)}
-                  className={[
-                    'cursor-pointer rounded-md px-2 py-1 text-meta transition-colors duration-150',
-                    rankMode === k ? 'bg-etf-layer1 text-etf-text' : 'text-etf-muted hover:text-etf-text',
-                  ].join(' ')}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-2">
-            {verdictList.map((r) => (
-              <div key={r.name} className="grid grid-cols-[76px_1fr_68px] items-center gap-2">
-                <span className="truncate text-meta text-etf-muted" title={r.name}>
-                  {r.name}
-                </span>
-                <span className="block h-1 bg-etf-layer2">
-                  <span
-                    className="block h-1"
-                    style={{
-                      width: `${rankScale(r.val)}%`,
-                      background:
-                        r.val >= 0
-                          ? 'var(--dsw-alias-state-error-primary)'
-                          : 'var(--dsw-alias-state-success-primary)',
-                    }}
-                  />
-                </span>
-                <span className={`text-right font-etf-mono text-meta tabular-nums ${toneOf(r.val)}`}>
-                  {signed(r.val, 1)}
-                </span>
-              </div>
-            ))}
-          </div>
-          {rankRows.length > 15 && (
-            <div className="mt-3 flex items-center justify-between border-t border-etf-line1 pt-3">
-              <span className="text-meta text-etf-faint">{rankAll ? `全部 ${rankRows.length} 项` : '前 15 项'}</span>
-              <button
-                type="button"
-                onClick={() => setRankAll((v) => !v)}
-                className="cursor-pointer text-meta text-etf-muted transition-colors duration-150 hover:text-etf-text"
-              >
-                {rankAll ? '收起' : `展开全部 ${rankRows.length} 项`}
-              </button>
-            </div>
-          )}
-        </Card>
-      </div>
 
       {/* ETF 明细 */}
       <Card className="mb-3">
@@ -1126,7 +1127,7 @@ function Dashboard() {
               </span>
             }
           />
-          <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-6">
             {data.temperature.items.map((it) => (
               <div key={it.key}>
                 <div className="text-meta text-etf-faint">{it.label}</div>

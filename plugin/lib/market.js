@@ -52,45 +52,63 @@ export async function marketTemperature(pool, asOf) {
    */
   const push = (key, label, value, unit, extra = {}) => {
     if (value === null || !Number.isFinite(value)) return
-    const digits = unit === '家' ? 0 : unit === '倍' ? 2 : unit === '万亿' ? 2 : 0
+    const digits = unit === '家' ? 0 : unit === '倍' ? 2 : unit === '万亿' ? 2 : unit === '%' ? 1 : 0
     out.items.push({ key, label, value, unit, digits, ...extra })
   }
 
   try {
-    // ── 1. 涨停 / 炸板 / 连板：短线情绪温度 ──
-    const zt = await pool.query(
+    // ── 1. 涨停 / 跌停 / 炸板：短线情绪温度 ──
+    //
+    // zt_pool 的 pool 字段有 5 类：zt 涨停、zb 炸板、dt 跌停、strong 强势、sub_new 次新。
+    // 必须按 pool 过滤——曾经漏了这个条件，把全部 405 行当成涨停，
+    // 导致 11-03 报出「涨停 405 家」（真实 48 家），还把 17 家跌停算成了涨停。
+    //
+    // 板块口径无需自己判断：实测 zt 池主板 47 家涨幅 9.82~10.13（限 10%）、
+    // 创业板 1 家 20.00（限 20%），tushare 已按各板块涨跌幅限制正确判定，
+    // 不存在「把科创板/北交所 10%+ 算成涨停」的问题。
+    const lim = await pool.query(
       `SELECT trade_date,
-              count(*)::int AS limit_up
+              count(*) FILTER (WHERE pool = 'zt')::int AS limit_up,
+              count(*) FILTER (WHERE pool = 'dt')::int AS limit_down,
+              count(*) FILTER (WHERE pool = 'zb')::int AS broken
          FROM zt_pool
         WHERE trade_date <= $1::date AND trade_date > $1::date - INTERVAL '45 days'
         GROUP BY trade_date ORDER BY trade_date`,
       [asOf],
     )
-    if (zt.rows.length >= MIN_DAYS) {
-      const today = zt.rows[zt.rows.length - 1]
-      const hist = zt.rows.slice(0, -1).map((r) => Number(r.limit_up))
-      push('limitUp', '涨停家数', Number(today.limit_up), '家', {
+    if (lim.rows.length >= MIN_DAYS) {
+      const today = lim.rows[lim.rows.length - 1]
+      const hist = lim.rows.slice(0, -1)
+      const up = Number(today.limit_up)
+      const dn = Number(today.limit_down)
+      const brk = Number(today.broken)
+
+      push('limitUp', '涨停家数', up, '家', {
         windowDays: hist.length,
-        rank: percentileRank(hist, Number(today.limit_up)),
+        rank: percentileRank(hist.map((r) => Number(r.limit_up)), up),
         hint: '短线情绪温度，不预测方向',
       })
-    }
-
-    const brk = await pool.query(
-      `SELECT trade_date, count(*)::int AS broken
-         FROM ths_limit_break
-        WHERE trade_date <= $1::date AND trade_date > $1::date - INTERVAL '45 days'
-        GROUP BY trade_date ORDER BY trade_date`,
-      [asOf],
-    )
-    if (brk.rows.length >= MIN_DAYS) {
-      const today = brk.rows[brk.rows.length - 1]
-      const hist = brk.rows.slice(0, -1).map((r) => Number(r.broken))
-      push('limitBreak', '炸板家数', Number(today.broken), '家', {
+      push('limitDown', '跌停家数', dn, '家', {
         windowDays: hist.length,
-        rank: percentileRank(hist, Number(today.broken)),
-        hint: '越高说明封板意愿越弱',
+        rank: percentileRank(hist.map((r) => Number(r.limit_down)), dn),
+        hint: '恐慌情绪温度',
       })
+      // 炸板率 = 炸板 ÷ (涨停 + 炸板)。比单看炸板数更能反映封板意愿
+      if (up + brk > 0) {
+        const rate = (brk / (up + brk)) * 100
+        push('brokenRate', '炸板率', rate, '%', {
+          windowDays: hist.length,
+          rank: percentileRank(
+            hist.map((r) => {
+              const u = Number(r.limit_up)
+              const b = Number(r.broken)
+              return u + b > 0 ? (b / (u + b)) * 100 : 0
+            }),
+            rate,
+          ),
+          hint: `炸板 ${brk} 家 / 触及涨停 ${up + brk} 家`,
+        })
+      }
     }
 
     // ── 2. 涨跌家数比：当日赚钱效应 ──
