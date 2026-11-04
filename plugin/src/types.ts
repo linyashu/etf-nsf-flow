@@ -258,6 +258,7 @@ export interface IntradayRow {
   amountYi: number
   pct: number | null
   netActiveYi: number | null
+  premiumPct: number | null
   dailyAvgYi: number | null
   multiple: number | null
 }
@@ -273,8 +274,10 @@ export interface IntradayAlert {
     baselineYi: number | null
     multiple: number | null
     dayRatio: number | null
+    premiumPct: number | null
+    premiumCount: number
   }
   top: IntradayRow[]
   rows: IntradayRow[]
-  warn: { amount: string; netActive: string; predictable: string }
+  warn: { amount: string; netActive: string; predictable: string; premium?: string }
 }

@@ -662,7 +662,7 @@ function Dashboard() {
           />
 
           {/* 三格：倍数 / 成交额 / 主动净买入。与判词带同样「标签 → 主值 → 辅助行」结构 */}
-          <div className="grid grid-cols-1 gap-y-4 border-y border-etf-line1 py-4 sm:grid-cols-3 sm:divide-x sm:divide-etf-line1">
+          <div className="grid grid-cols-1 gap-y-4 border-y border-etf-line1 py-4 sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-etf-line1">
             <div className="flex flex-col sm:pr-6">
               <div className="text-meta text-etf-faint">成交额放大倍数</div>
               <div className="mt-1 flex items-baseline gap-2">
@@ -718,19 +718,45 @@ function Dashboard() {
                 外盘−内盘推算，非资金净流入
               </div>
             </div>
+
+            <div className="flex flex-col sm:pl-0 lg:pl-6">
+              <div className="text-meta text-etf-faint">加权折溢价</div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span
+                  className={`font-etf-mono text-lead tabular-nums ${
+                    (data.intraday.totals.premiumPct ?? 0) === 0
+                      ? 'text-etf-text'
+                      : (data.intraday.totals.premiumPct ?? 0) > 0
+                        ? 'text-etf-intext'
+                        : 'text-etf-outtext'
+                  }`}
+                >
+                  {data.intraday.totals.premiumPct === null
+                    ? '—'
+                    : `${signed(data.intraday.totals.premiumPct, 2)}%`}
+                </span>
+                <span className="text-meta text-etf-muted">
+                  {(data.intraday.totals.premiumPct ?? 0) >= 0 ? '溢价' : '折价'}
+                </span>
+              </div>
+              <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
+                {data.intraday.totals.premiumCount} / {data.intraday.rows.length} 只溢价 · 套利动力
+              </div>
+            </div>
           </div>
 
           {/* Top 放量标的：列标签必须在数据上方 */}
           <div className="mt-4">
-            <div className="mb-2 grid grid-cols-[1fr_84px_64px_64px] gap-2 text-meta text-etf-faint">
+            <div className="mb-2 grid grid-cols-[1fr_80px_56px_68px_64px] gap-2 text-meta text-etf-faint">
               <span>成交额 Top 5</span>
               <span className="text-right">成交额</span>
               <span className="text-right">倍数</span>
               <span className="text-right">主动净买</span>
+              <span className="text-right">折溢价</span>
             </div>
             <div className="grid gap-1.5">
               {data.intraday.top.slice(0, 5).map((r) => (
-                <div key={r.code} className="grid grid-cols-[1fr_84px_64px_64px] items-center gap-2 text-meta">
+                <div key={r.code} className="grid grid-cols-[1fr_80px_56px_68px_64px] items-center gap-2 text-meta">
                   <span className="truncate text-etf-muted" title={`${r.name} ${r.code}`}>
                     {r.name}
                   </span>
@@ -747,6 +773,17 @@ function Dashboard() {
                   >
                     {r.netActiveYi === null ? '—' : signed(r.netActiveYi, 1)}
                   </span>
+                  <span
+                    className={`text-right font-etf-mono tabular-nums ${
+                      (r.premiumPct ?? 0) > 0
+                        ? 'text-etf-intext'
+                        : (r.premiumPct ?? 0) < 0
+                          ? 'text-etf-outtext'
+                          : 'text-etf-muted'
+                    }`}
+                  >
+                    {r.premiumPct === null ? '—' : `${signed(r.premiumPct, 2)}%`}
+                  </span>
                 </div>
               ))}
             </div>
@@ -756,7 +793,8 @@ function Dashboard() {
           </div>
 
           <div className="mt-3 border-t border-etf-line1 pt-2 text-meta leading-4 text-etf-faint">
-            {data.intraday.warn.amount} {data.intraday.warn.netActive} {data.intraday.warn.predictable}
+            {data.intraday.warn.amount} {data.intraday.warn.netActive}{' '}
+            {data.intraday.warn.premium ?? ''} {data.intraday.warn.predictable}
           </div>
         </Card>
       )}

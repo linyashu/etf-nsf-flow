@@ -119,6 +119,10 @@ export async function fetchQuotes(codes, { signal } = {}) {
     const outer = num(7) // 外盘（主动买）
     const inner = num(8) // 内盘（主动卖）
     const amountWan = num(37) // 成交额（万元）
+    // [78] 是交易所实时估算净值（IOPV）。折溢价 = 二级市场价格相对净值的偏离，
+    // 它直接度量套利动力：溢价→套利者「申购+卖出」→份额将增；折价→「买入+赎回」→份额将减。
+    // 这比「外盘−内盘」更接近申赎本质，因为后者只是成交方向。
+    const iopv = num(78)
 
     // 腾讯给的是「手」，1 手 = 100 份；成交额用万元
     const amountYi = amountWan === null ? null : amountWan / 1e4
@@ -142,6 +146,9 @@ export async function fetchQuotes(codes, { signal } = {}) {
       outer,
       inner,
       netActiveYi: netActive,
+      // 价格相对 IOPV 的偏离（%）。正=溢价
+      premiumPct: iopv && price ? ((price - iopv) / iopv) * 100 : null,
+      iopv,
       quoteTime: ts,
     })
   }
@@ -164,6 +171,8 @@ export function buildIntraday(quotes, dailyAvg, { now = new Date(), asOfDate = n
 
   let amtSum = 0
   let netSum = 0
+  let premNum = 0
+  let premDen = 0
   let baseSum = 0
   let counted = 0
   const rows = []
@@ -173,6 +182,10 @@ export function buildIntraday(quotes, dailyAvg, { now = new Date(), asOfDate = n
     const base = dailyAvg?.get(code) ?? null
     amtSum += q.amountYi
     if (q.netActiveYi !== null) netSum += q.netActiveYi
+    if (q.premiumPct !== null) {
+      premNum += q.premiumPct * q.amountYi
+      premDen += q.amountYi
+    }
     if (base !== null) baseSum += base
     counted += 1
     rows.push({
@@ -181,6 +194,7 @@ export function buildIntraday(quotes, dailyAvg, { now = new Date(), asOfDate = n
       amountYi: round(q.amountYi, 2),
       pct: round(q.pct, 2),
       netActiveYi: q.netActiveYi === null ? null : round(q.netActiveYi, 2),
+      premiumPct: q.premiumPct === null ? null : round(q.premiumPct, 2),
       dailyAvgYi: base === null ? null : round(base, 2),
       // 同时点倍数：当日成交额 ÷ (日均 × 进度)。除以进度才能和「全天」比较
       multiple: base && progress ? round(q.amountYi / (base * progress), 2) : null,
@@ -213,6 +227,9 @@ export function buildIntraday(quotes, dailyAvg, { now = new Date(), asOfDate = n
       multiple: multiple === null ? null : round(multiple, 2),
       // 「已达成全天日均的多少倍」——不除进度，回答「今天量能相当于几个平常日」
       dayRatio: baseSum > 0 ? round(amtSum / baseSum, 2) : null,
+      // 成交额加权折溢价；正=溢价（申购压力）
+      premiumPct: premDen > 0 ? round(premNum / premDen, 2) : null,
+      premiumCount: rows.filter((r) => r.premiumPct !== null && r.premiumPct > 0).length,
     },
     top: rows.slice(0, 8),
     rows,
@@ -220,6 +237,7 @@ export function buildIntraday(quotes, dailyAvg, { now = new Date(), asOfDate = n
       amount: '成交量是换手，任何人都贡献；宽基 ETF 一二级套利会产生反向成交，稀释信号。',
       netActive: '主动净买入由外盘/内盘推算，是逐笔成交方向，不是资金净流入、也不是基金申赎。',
       predictable: '统计上成交额对未来收益不显著，仅用于盘中预警，不参与评分。',
+      premium: '折溢价反映套利动力，不必然转化为申赎；流动性差的标的名义偏离会偏大。',
     },
   }
 }
