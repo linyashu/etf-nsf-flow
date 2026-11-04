@@ -443,7 +443,7 @@ function Dashboard() {
           因此用 1.6fr 加宽，并在窄屏让它独占整行。
         */}
         <div className="mt-5 grid grid-cols-2 gap-y-5 lg:grid-cols-[1.8fr_1fr_1fr_1fr] lg:divide-x lg:divide-etf-line1">
-          <div className="col-span-2 lg:col-span-1 lg:pr-6">
+          <div className="col-span-2 flex items-center lg:col-span-1 lg:pr-6">
             <div className="text-meta text-etf-faint">综合评分</div>
             <div className="mt-1 flex items-center gap-3">
               <Gauge score={s.composite} />
@@ -455,17 +455,17 @@ function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="lg:px-6">
+          <div className="flex items-center lg:px-6">
             <Metric label={`近 ${lookK} 日净申购`} value={`${signed(basketNd, 1)} 亿`} tone={toneOf(basketNd)} />
           </div>
-          <div className="lg:px-6">
+          <div className="flex items-center lg:px-6">
             <Metric
               label={szLag ? '最新单日（沪市口径）' : '最新单日'}
               value={`${signed(s.basket.inflowLatest, 1)} 亿`}
               tone={toneOf(s.basket.inflowLatest)}
             />
           </div>
-          <div className="lg:pl-6">
+          <div className="flex items-center lg:pl-6">
             <Metric label="净申购板块" value={`${inflowSectors} / ${sectors.length}`} />
           </div>
         </div>
@@ -477,24 +477,18 @@ function Dashboard() {
         */}
         {en && (
           <div className="mt-4 grid grid-cols-1 gap-y-5 border-t border-etf-line1 pt-4 sm:grid-cols-3 sm:divide-x sm:divide-etf-line1">
-            <div className="sm:pr-6">
+            <div className="flex flex-col sm:pr-6">
               <div className="text-meta text-etf-faint">单日净申购历史分位</div>
               <div className="mt-1 font-etf-mono text-body tabular-nums text-etf-text">
                 {en.percentile.daily === null ? '—' : `第 ${en.percentile.daily} 分位`}
               </div>
               <PercentileBar pct={en.percentile.daily} />
-              <div className="mt-1.5 text-meta leading-4 text-etf-faint">
+              <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
                 {(() => {
-                  const short = (d?: string | null) =>
-                    !d ? '—' : d.includes('-') ? d.slice(5) : `${d.slice(4, 6)}-${d.slice(6, 8)}`
                   const p90 = en.percentile.marks.find((m) => m.p === 90)?.value
-                  const span =
-                    en.percentile.from && en.percentile.to
-                      ? `${short(en.percentile.from)}–${short(en.percentile.to)}`
-                      : null
                   return [
                     p90 != null ? `90 分位 = ${nf(p90, 0)} 亿` : null,
-                    span ? `样本 ${span}（${en.percentile.sampleDays} 日）` : null,
+                    `样本 ${en.percentile.sampleDays} 日`,
                   ]
                     .filter(Boolean)
                     .join(' · ')
@@ -502,12 +496,12 @@ function Dashboard() {
               </div>
             </div>
 
-            <div className="sm:px-6">
+            <div className="flex flex-col sm:px-6">
               <div className="text-meta text-etf-faint">流入持续性</div>
               <div className="mt-1 font-etf-mono text-body tabular-nums text-etf-text">
                 {winPersistence && winPersistence.streak > 0 ? `连续 ${winPersistence.streak} 天` : '未连续流入'}
               </div>
-              <div className="mt-1.5 text-meta leading-4 text-etf-faint">
+              <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
                 日均 {nf(winPersistence?.avgPerDay ?? 0, 0)} 亿 · 近 {winPersistence?.windowDays ?? lookK} 日{' '}
                 {winPersistence?.positiveDays ?? 0} 天为正
                 {winPersistence?.burstShare != null && winPersistence.burstShare >= 50
@@ -516,12 +510,12 @@ function Dashboard() {
               </div>
             </div>
 
-            <div className="sm:pl-6">
+            <div className="flex flex-col sm:pl-6">
               <div className="text-meta text-etf-faint">流入扩散度</div>
               <div className="mt-1 font-etf-mono text-body tabular-nums text-etf-text">
                 {winDiffusion?.inflowGroups ?? 0} / {winDiffusion?.totalGroups ?? 0} 指数
               </div>
-              <div className="mt-1.5 text-meta leading-4 text-etf-faint">
+              <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
                 宽基 {winDiffusion?.broadInflow ?? 0} / {winDiffusion?.broadTotal ?? 0} ·{' '}
                 {(() => {
                   const r = winDiffusion?.ratio ?? 0
@@ -539,6 +533,15 @@ function Dashboard() {
           {windowConcentration.top3.length
             ? `（${windowConcentration.top3.map((t) => `${t.group} ${signed(t.inflow, 1)}`).join(' · ')}）`
             : ''}
+          {en?.percentile.from && en?.percentile.to ? (
+            <>
+              {' · 分位样本 '}
+              <span className="whitespace-nowrap">
+                {String(en.percentile.from).slice(4, 6)}-{String(en.percentile.from).slice(6, 8)} 至{' '}
+                {String(en.percentile.to).slice(4, 6)}-{String(en.percentile.to).slice(6, 8)}
+              </span>
+            </>
+          ) : null}
           {szLag ? (
             <>
               {' · 深市份额 '}

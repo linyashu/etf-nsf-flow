@@ -196,6 +196,9 @@ components:
    不允许某个模块把副标题塞进标题行、另一个模块放在说明行——否则分隔线与内容起始会错位。
 2. **边界明确**：用 1px `border-l1` 竖线分隔（`divide-x`），不靠 whitespace。
 3. **底部贴齐**：容器 `flex flex-col`，内容区 `flex-1 content-start`，底部注 `mt-auto`。
+4. **竖线等高**：用 `divide-x` 时**不要**给容器加 `items-center`——那会让各格高度不一、
+   竖线长短参差。正确做法是让格撑满（默认 stretch），在各格内部用 `flex items-center`
+   把内容垂直居中。
 
 实测（结构与存量三列）：统一前分隔线错位 33px、底边参差；统一后六段位置完全一致：
 
