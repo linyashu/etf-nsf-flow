@@ -1130,7 +1130,12 @@ function Dashboard() {
           <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-6">
             {data.temperature.items.map((it) => (
               <div key={it.key}>
-                <div className="text-meta text-etf-faint">{it.label}</div>
+                <div className="text-meta text-etf-faint">
+                  {it.label}
+                  {it.dataDate && it.dataDate !== data.temperature?.asOf ? (
+                    <span className="ml-1 text-etf-muted">（{it.dataDate.slice(5)}）</span>
+                  ) : null}
+                </div>
                 <div className="mt-1 flex items-baseline gap-1">
                   <span className="font-etf-mono text-emph tabular-nums text-etf-text">
                     {nf(it.value, it.digits ?? 0)}

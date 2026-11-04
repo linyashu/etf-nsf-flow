@@ -19,6 +19,12 @@
  */
 const MIN_DAYS = 10
 
+function round(v, n) {
+  if (v === null || !Number.isFinite(v)) return null
+  const f = 10 ** n
+  return Math.round(v * f) / f
+}
+
 function pct(a, b) {
   if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) return null
   return ((a - b) / Math.abs(b)) * 100
@@ -84,6 +90,7 @@ export async function marketTemperature(pool, asOf) {
       const brk = Number(today.broken)
 
       push('limitUp', '涨停家数', up, '家', {
+        dataDate: asOf,
         windowDays: hist.length,
         rank: percentileRank(hist.map((r) => Number(r.limit_up)), up),
         hint: '短线情绪温度，不预测方向',
@@ -142,6 +149,7 @@ export async function marketTemperature(pool, asOf) {
       const base = mean(series.slice(-21, -1))
       const ratio = base ? (today / base) * 100 : null
       push('turnover', '全市场成交额', today, '亿', {
+        dataDate: asOf,
         windowDays: series.slice(0, -1).length,
         rank: percentileRank(series.slice(0, -1), today),
         hint: ratio === null ? null : `为 20 日均值的 ${ratio.toFixed(0)}%`,
@@ -149,8 +157,11 @@ export async function marketTemperature(pool, asOf) {
     }
 
     // ── 4. 两融余额：杠杆水位 ──
+    // 必须用 rzrqye（融资融券余额），不是 rzye（仅融资余额）。
+    // 实测 11-02 融资余额 2.2840 万亿、两融余额 2.3121 万亿，差的是融券 280 亿——
+    // 标签写「两融」却只算融资，是口径错误。
     const margin = await pool.query(
-      `SELECT trade_date, sum(rzye)::float AS bal
+      `SELECT to_char(trade_date,'YYYY-MM-DD') AS d, sum(rzrqye)::float AS bal, sum(rzye)::float AS fin
          FROM margin_detail
         WHERE trade_date <= $1::date AND trade_date > $1::date - INTERVAL '45 days'
         GROUP BY trade_date ORDER BY trade_date`,
@@ -161,14 +172,20 @@ export async function marketTemperature(pool, asOf) {
       const today = series[series.length - 1]
       const prev = series[series.length - 2]
       // 两融余额是单调趋势量，余额接近历史新高时分位恒为 100，缺乏信息量。
-      // 改为展示「相对 20 日均值的位置」+ 环比变化。
+      // 因此不叫「分位」，直接给「相对 20 日均值」的偏离度。
       const base20 = mean(series.slice(-21, -1))
+      const dev = base20 ? (today / base20 - 1) * 100 : null
+      const todayRow = margin.rows[margin.rows.length - 1]
+      const finShare = todayRow?.fin && todayRow?.bal ? (Number(todayRow.fin) / Number(todayRow.bal)) * 100 : null
       push('margin', '两融余额', today / 1e4, '万亿', {
-        windowDays: series.slice(0, -1).length,
-        // 两融是趋势量，用「相对 20 日均值」而非分位；标注也要改成这个口径
-        rankLabel: '相对 20 日均值',
-        rank: base20 ? Math.min(100, Math.max(0, 50 + ((today / base20 - 1) * 100) * 5)) : null,
-        hint: `较前日 ${pct(today, prev)?.toFixed(2) ?? '—'}% · 20 日均值 ${((today / base20 - 1) * 100).toFixed(1)}%`,
+        // 两融是 T+1 发布：asOf 当天通常还没有数据，必须把真实日期标出来
+        dataDate: todayRow?.d ?? null,
+        rank: null,
+        deviation: dev === null ? null : round(dev, 1),
+        hint:
+          `较前日 ${pct(today, prev)?.toFixed(2) ?? '—'}%` +
+          (dev === null ? '' : ` · 20 日均值 ${dev >= 0 ? '+' : ''}${dev.toFixed(1)}%`) +
+          (finShare === null ? '' : ` · 融资占 ${finShare.toFixed(0)}%`),
       })
     }
 

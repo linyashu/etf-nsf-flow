@@ -240,6 +240,8 @@ export interface TemperatureItem {
   unit: string
   digits?: number
   windowDays?: number
+  dataDate?: string | null
+  deviation?: number | null
   rankLabel?: string
   rank?: number | null
   hint?: string | null
