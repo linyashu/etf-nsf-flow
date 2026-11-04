@@ -20,13 +20,6 @@
 
 const QQ_URL = 'https://qt.gtimg.cn/q='
 
-/** A 股交易时段（分钟）。 */
-const SESSION = {
-  morning: [9 * 60 + 30, 11 * 60 + 30],
-  afternoon: [13 * 60, 15 * 60],
-  totalMinutes: 240,
-}
-
 /** 取北京时间的时分秒。不能直接用本地时区——用户在别的时区会用错进度。 */
 function shanghaiClock(now = new Date()) {
   const p = new Intl.DateTimeFormat('en-CA', {
@@ -41,6 +34,19 @@ function shanghaiClock(now = new Date()) {
   }).formatToParts(now)
   const g = (t) => Number(p.find((x) => x.type === t)?.value ?? 0)
   return { y: g('year'), mo: g('month'), d: g('day'), h: g('hour'), mi: g('minute'), s: g('second') }
+}
+
+/** 北京时间当天日期 YYYY-MM-DD。用于判断行情是否属于「今天」。 */
+export function todayBeijing(now = new Date()) {
+  const c = shanghaiClock(now)
+  return `${c.y}-${String(c.mo).padStart(2, '0')}-${String(c.d).padStart(2, '0')}`
+}
+
+/** A 股交易时段（分钟）。 */
+const SESSION = {
+  morning: [9 * 60 + 30, 11 * 60 + 30],
+  afternoon: [13 * 60, 15 * 60],
+  totalMinutes: 240,
 }
 
 /**

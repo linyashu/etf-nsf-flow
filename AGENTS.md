@@ -253,10 +253,15 @@ count(*) FILTER (WHERE pool = 'zb') AS broken
 3. 统计上成交额对未来 20 日收益不显著（t=-0.09），仅作预警，**不参与评分**
 
 实现注意：
-- 只在 `phase` 为 morning / lunch / afternoon 时拉取，盘前与收盘后返回 null
+- **收盘后也要拉取**（`phase` 为 morning / lunch / afternoon / closed）。
+  15:00 后行情仍是当天完整数据，此时倍数是「全天 vs 20日均额」，
+  正是当天最终的量能结论。只有 `pre`（盘前）没有意义。
+  曾错误地只在交易时段拉取，导致收盘后卡片整个消失，用户以为坏了。
+- 非交易日靠「行情日期 == 北京今天」过滤——周末拉到的会是上一交易日数据
 - 时段判断必须用 `Asia/Shanghai`，不能直接读服务器本地时区
 - 行情时间戳的日期与库内份额日期不同（行情是今日、份额是 T-1），
   `asOfDate` 取行情日期，`shareDate` 另存
+- 收盘后 `progress=1`，`multiple` 与 `dayRatio` 相等，UI 不要重复展示
 
 ## 指标取舍原则
 

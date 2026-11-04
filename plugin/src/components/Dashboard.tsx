@@ -648,15 +648,14 @@ function Dashboard() {
                   预警信号
                 </span>
                 <span>
-                  {data.intraday.session.phase === 'lunch'
-                    ? '午间休市'
-                    : data.intraday.session.phase === 'afternoon'
-                      ? '下午盘'
-                      : '上午盘'}
+                  {(() => {
+                    const ph = data.intraday!.session.phase
+                    if (ph === 'closed') return '已收盘 · 全天数据'
+                    const label = ph === 'lunch' ? '午间休市' : ph === 'afternoon' ? '下午盘' : '上午盘'
+                    return `${label} · 进度 ${Math.round((data.intraday!.session.progress ?? 0) * 100)}%`
+                  })()}
                   {' · '}
-                  进度 {Math.round((data.intraday.session.progress ?? 0) * 100)}%
-                  {' · '}
-                  {data.intraday.asOfDate === todayDate ? '今日实时' : `${data.intraday.asOfDate} 实时`}
+                  {data.intraday.asOfDate === todayDate ? '今日' : data.intraday.asOfDate}
                 </span>
               </span>
             }
@@ -670,7 +669,9 @@ function Dashboard() {
                 <span className="font-etf-mono text-lead tabular-nums text-etf-text">
                   {data.intraday.totals.multiple === null ? '—' : `${nf(data.intraday.totals.multiple, 2)}×`}
                 </span>
-                <span className="text-meta text-etf-muted">较同时点历史均值</span>
+                <span className="text-meta text-etf-muted">
+                  {data.intraday.session.phase === 'closed' ? '较 20 日全天均额' : '较同时点历史均值'}
+                </span>
               </div>
               <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
                 {data.intraday.totals.multiple === null
@@ -692,11 +693,11 @@ function Dashboard() {
                 <span className="text-meta text-etf-muted">亿元</span>
               </div>
               <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
-                {data.intraday.totals.dayRatio === null
-                  ? '—'
-                  : `已达成全天日均 ${nf(data.intraday.totals.dayRatio, 2)}×`}
                 {data.intraday.totals.baselineYi !== null
-                  ? ` · 基准 ${nf(data.intraday.totals.baselineYi, 0)} 亿`
+                  ? `20 日基准 ${nf(data.intraday.totals.baselineYi, 0)} 亿`
+                  : '缺少 20 日均额基准'}
+                {data.intraday.session.phase !== 'closed' && data.intraday.totals.dayRatio !== null
+                  ? ` · 已达成全天日均 ${nf(data.intraday.totals.dayRatio, 2)}×`
                   : ''}
               </div>
             </div>

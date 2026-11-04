@@ -10,7 +10,7 @@ import { BASKET, BENCH, UNIVERSE, basketCodes, buildPanel, computeSignals, fundD
 import { compactToDash, fetchSSELatest, fetchSharesChunked } from './lib/sources.js'
 import { Store } from './lib/store.js'
 import { marketTemperature } from './lib/market.js'
-import { buildIntraday, fetchQuotes, sessionProgress } from './lib/intraday.js'
+import { buildIntraday, fetchQuotes, sessionProgress, todayBeijing } from './lib/intraday.js'
 import { fetchHolderStructure } from './lib/wind.js'
 import { fmtDate, query, toObjects } from './lib/tushare.js'
 
@@ -228,20 +228,24 @@ export function apply(ctx, config = {}) {
       }
     }
 
-    // 盘中量能预警：份额是 T+1，盘中唯一能「当天就知道」的信号是成交额。
-    // 只在交易时段拉取（盘前/收盘后无意义），且必须 store 可用（需要 20 日均额基准）。
+    // 盘中量能预警：份额是 T+1，这是唯一能「当天就知道」的信号。
+    //
+    // 收盘后也要拉：15:00 之后行情仍是当天完整数据，此时倍数是「全天 vs 20日均额」，
+    // 正是当天最终的量能结论。盘前（pre）才没有意义。
+    // 非交易日靠「行情日期是否等于北京今天」过滤——周末拉到的会是上一交易日数据。
     let intraday = null
-    const phase = sessionProgress().phase
-    if (store?.pool && (phase === 'morning' || phase === 'lunch' || phase === 'afternoon')) {
+    if (store?.pool && sessionProgress().phase !== 'pre') {
       try {
         const [quotes, avg] = await Promise.all([
           fetchQuotes(codes, { signal }),
           store.dailyAvgAmount(codes, 20),
         ])
-        intraday = buildIntraday(quotes, avg, {
+        const built = buildIntraday(quotes, avg, {
           now: new Date(),
           asOfDate: fmtDate(allDates[allDates.length - 1]),
         })
+        // 行情日期不是今天 → 今天没交易（周末/节假日），不展示「今日量能」
+        intraday = built && built.asOfDate === todayBeijing() ? built : null
       } catch {
         intraday = null
       }
