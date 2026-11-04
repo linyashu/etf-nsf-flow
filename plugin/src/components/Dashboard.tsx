@@ -94,7 +94,7 @@ function fmtLocalTime(iso?: string | null): string {
 }
 
 /** 分位条：把「历史第几分位」画成一条可读刻度。 */
-function PercentileBar({ pct, marks }: { pct: number | null; marks: Array<{ p: number; value: number }> }) {
+function PercentileBar({ pct }: { pct: number | null }) {
   if (pct === null) return null
   const clamped = Math.max(0, Math.min(100, pct))
   return (
@@ -114,14 +114,9 @@ function PercentileBar({ pct, marks }: { pct: number | null; marks: Array<{ p: n
       </div>
       {/* 端点必须对称：左端只写「低」、右端却给具体金额，会让人以为右端就是 90 分位刻度线 */}
       <div className="mt-1 flex justify-between font-etf-mono text-meta tabular-nums text-etf-faint">
-        <span>0 分位</span>
-        <span>100 分位</span>
+        <span>0</span>
+        <span>100</span>
       </div>
-      {marks.length > 0 && (
-        <div className="mt-0.5 text-meta leading-4 text-etf-faint">
-          达到 90 分位需单日 {nf(marks.find((m) => m.p === 90)?.value ?? 0, 0)} 亿
-        </div>
-      )}
     </div>
   )
 }
@@ -474,62 +469,65 @@ function Dashboard() {
             <Metric label="净申购板块" value={`${inflowSectors} / ${sectors.length}`} />
           </div>
         </div>
-        {/* 证据链：把「+1,381 亿」放进历史坐标里，回答「这算多还是少」 */}
+        {/*
+          证据链三列：统一「标签 → 主值 → 辅助行」结构，并用 1px 竖线分隔。
+          原先三列只有 32px 间距、无任何边界，且第一列是「标签←→数值」两端对齐、
+          另两列是「标签在上、数值在下」——结构不一致 + 无分组线，读者无法判断
+          哪些数字属于同一模块。
+        */}
         {en && (
-          <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 border-t border-etf-line1 pt-4 sm:grid-cols-3">
-            <div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-meta text-etf-faint">单日净申购历史分位</span>
-                <span className="font-etf-mono text-body tabular-nums text-etf-text">
-                  {en.percentile.daily === null ? '—' : `第 ${en.percentile.daily} 分位`}
-                </span>
+          <div className="mt-4 grid grid-cols-1 gap-y-5 border-t border-etf-line1 pt-4 sm:grid-cols-3 sm:divide-x sm:divide-etf-line1">
+            <div className="sm:pr-6">
+              <div className="text-meta text-etf-faint">单日净申购历史分位</div>
+              <div className="mt-1 font-etf-mono text-body tabular-nums text-etf-text">
+                {en.percentile.daily === null ? '—' : `第 ${en.percentile.daily} 分位`}
               </div>
-              <PercentileBar pct={en.percentile.daily} marks={en.percentile.marks} />
-              <div className="mt-1 text-meta leading-4 text-etf-faint">
+              <PercentileBar pct={en.percentile.daily} />
+              <div className="mt-1.5 text-meta leading-4 text-etf-faint">
                 {(() => {
                   const short = (d?: string | null) =>
                     !d ? '—' : d.includes('-') ? d.slice(5) : `${d.slice(4, 6)}-${d.slice(6, 8)}`
-                  return en.percentile.from && en.percentile.to
-                    ? `样本 ${short(en.percentile.from)} 至 ${short(en.percentile.to)}，共 ${en.percentile.sampleDays} 个交易日`
-                    : `${en.percentile.sampleDays} 个交易日样本`
+                  const p90 = en.percentile.marks.find((m) => m.p === 90)?.value
+                  const span =
+                    en.percentile.from && en.percentile.to
+                      ? `${short(en.percentile.from)}–${short(en.percentile.to)}`
+                      : null
+                  return [
+                    p90 != null ? `90 分位 = ${nf(p90, 0)} 亿` : null,
+                    span ? `样本 ${span}（${en.percentile.sampleDays} 日）` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
                 })()}
               </div>
             </div>
 
-            <div>
+            <div className="sm:px-6">
               <div className="text-meta text-etf-faint">流入持续性</div>
-              <div className="mt-1 flex items-baseline gap-3">
-                <span className="font-etf-mono text-body tabular-nums text-etf-text">
-                  {winPersistence && winPersistence.streak > 0 ? `连续 ${winPersistence.streak} 天` : '未连续流入'}
-                </span>
-                <span className="font-etf-mono text-meta tabular-nums text-etf-muted">
-                  日均 {nf(winPersistence?.avgPerDay ?? 0, 0)} 亿
-                </span>
+              <div className="mt-1 font-etf-mono text-body tabular-nums text-etf-text">
+                {winPersistence && winPersistence.streak > 0 ? `连续 ${winPersistence.streak} 天` : '未连续流入'}
               </div>
-              <div className="mt-1 text-meta text-etf-faint">
-                近 {winPersistence?.windowDays ?? lookK} 日 {winPersistence?.positiveDays ?? 0} 天为正
+              <div className="mt-1.5 text-meta leading-4 text-etf-faint">
+                日均 {nf(winPersistence?.avgPerDay ?? 0, 0)} 亿 · 近 {winPersistence?.windowDays ?? lookK} 日{' '}
+                {winPersistence?.positiveDays ?? 0} 天为正
                 {winPersistence?.burstShare != null && winPersistence.burstShare >= 50
                   ? ` · 最大单日占 ${nf(winPersistence.burstShare, 0)}%`
                   : ''}
               </div>
             </div>
 
-            <div>
+            <div className="sm:pl-6">
               <div className="text-meta text-etf-faint">流入扩散度</div>
-              <div className="mt-1 flex items-baseline gap-3">
-                <span className="font-etf-mono text-body tabular-nums text-etf-text">
-                  {winDiffusion?.inflowGroups ?? 0} / {winDiffusion?.totalGroups ?? 0} 指数
-                </span>
-                <span className="font-etf-mono text-meta tabular-nums text-etf-muted">
-                  宽基 {winDiffusion?.broadInflow ?? 0} / {winDiffusion?.broadTotal ?? 0}
-                </span>
+              <div className="mt-1 font-etf-mono text-body tabular-nums text-etf-text">
+                {winDiffusion?.inflowGroups ?? 0} / {winDiffusion?.totalGroups ?? 0} 指数
               </div>
-              <div className="mt-1 text-meta text-etf-faint">
+              <div className="mt-1.5 text-meta leading-4 text-etf-faint">
+                宽基 {winDiffusion?.broadInflow ?? 0} / {winDiffusion?.broadTotal ?? 0} ·{' '}
                 {(() => {
                   const r = winDiffusion?.ratio ?? 0
-                  if (r >= 0.7) return '多数指数流入，覆盖面广'
-                  if (r >= 0.35) return '部分指数流入，仍有选择性'
-                  return '少数指数流入，集中护盘'
+                  if (r >= 0.7) return '多数指数流入'
+                  if (r >= 0.35) return '部分指数流入'
+                  return '少数指数流入'
                 })()}
               </div>
             </div>
