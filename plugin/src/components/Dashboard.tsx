@@ -869,15 +869,23 @@ function Dashboard() {
         <HeatmapTable data={data.heatmap} />
       </Card>
 
-      {/* 结构与存量：三列统一「标题 + 内容」，不再用列头（双列内容时列头会与内容错位） */}
+      {/*
+        结构与存量：三列统一为
+           标题 → 说明行 → 1px 分隔线 → 内容（flex-1）→ 底部说明（贴底）
+        原先三列结构各不相同（列1 是「h3 单行 + 说明行」，列2 是「h3 带副标题 +
+        空分隔线」，列3 是「h3 带副标题 + 说明行」），导致分隔线错位 33px、
+        内容起始位置与底边全部不齐。用 flex-col + mt-auto 让三段结构强制对齐。
+      */}
       <Card className="mb-3">
         <Head title="结构与存量" meta="动量 近5日 vs 前5日 · 管理人 近30日 · 机构持有 季度" />
         <div className="grid grid-cols-1 gap-x-8 gap-y-7 lg:grid-cols-3">
           {/* ── 板块动量 ── */}
-          <section>
-            <h3 className="m-0 mb-2 text-body font-medium text-etf-text">板块动量</h3>
-            <div className="mb-2 border-b border-etf-line1 pb-1 text-meta text-etf-faint">亿元</div>
-            <div className="grid gap-1.5">
+          <section className="flex flex-col">
+            <h3 className="m-0 text-body font-medium text-etf-text">板块动量</h3>
+            <div className="mb-2 mt-1.5 border-b border-etf-line1 pb-1.5 text-meta text-etf-faint">
+              亿元 · 近 5 日 vs 前 5 日
+            </div>
+            <div className="grid flex-1 content-start gap-1.5">
               {momRows.map((m) => (
                 <div key={m.sector} className="grid grid-cols-[52px_1fr_48px] items-center gap-2 text-meta">
                   <span className="truncate text-etf-muted" title={m.sector}>
@@ -901,63 +909,55 @@ function Dashboard() {
                 </div>
               ))}
             </div>
-            {(data.momentum?.length ?? 0) > 8 && (
-              <div className="mt-2 border-t border-etf-line1 pt-1.5 text-meta text-etf-faint">
-                另 {(data.momentum?.length ?? 0) - 8} 个板块
-              </div>
-            )}
+            <div className="mt-2 border-t border-etf-line1 pt-1.5 text-meta text-etf-faint">
+              {(data.momentum?.length ?? 0) > 8 ? `另 ${(data.momentum?.length ?? 0) - 8} 个板块未显示` : '共 8 个板块'}
+            </div>
           </section>
 
           {/* ── 管理人偏好 ── */}
-          <section>
-            <h3 className="m-0 mb-2 text-body font-medium text-etf-text">
-              管理人偏好
-              <span className="ml-2 text-meta font-normal text-etf-faint">份额变化 / 净申购 亿</span>
-            </h3>
-            <div className="mb-2 border-b border-etf-line1 pb-1" />
-            <div className="grid gap-2">
+          <section className="flex flex-col">
+            <h3 className="m-0 text-body font-medium text-etf-text">管理人偏好</h3>
+            <div className="mb-2 mt-1.5 border-b border-etf-line1 pb-1.5 text-meta text-etf-faint">
+              份额变化 / 净申购（亿）· 近 30 日
+            </div>
+            <div className="grid flex-1 content-start gap-2.5">
               {(data.managers ?? []).slice(0, 3).map((g) => (
-                <div key={g.group}>
+                <div key={g.group} className="grid gap-1">
                   <div className="text-meta text-etf-muted">{g.group}</div>
-                  <div className="grid gap-1">
-                    {g.rows.slice(0, 2).map((r) => (
-                      <div key={r.code} className="grid grid-cols-[1fr_52px_48px] items-center gap-2 text-meta">
-                        <span className="truncate text-etf-faint" title={`${r.manager} ${r.code}`}>
-                          {r.manager.replace(/基金管理有限公司|基金管理股份有限公司|基金管理/g, '')}
-                        </span>
-                        <span className={`text-right font-etf-mono tabular-nums ${toneOf(r.shareChgPct)}`}>
-                          {signed(r.shareChgPct, 0)}%
-                        </span>
-                        <span className={`text-right font-etf-mono tabular-nums ${toneOf(r.inflow)}`}>
-                          {signed(r.inflow, 0)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {g.rows.slice(0, 2).map((r) => (
+                    <div key={r.code} className="grid grid-cols-[1fr_52px_48px] items-center gap-2 text-meta">
+                      <span className="truncate text-etf-faint" title={`${r.manager} ${r.code}`}>
+                        {r.manager.replace(/基金管理有限公司|基金管理股份有限公司|基金管理/g, '')}
+                      </span>
+                      <span className={`text-right font-etf-mono tabular-nums ${toneOf(r.shareChgPct)}`}>
+                        {signed(r.shareChgPct, 0)}%
+                      </span>
+                      <span className={`text-right font-etf-mono tabular-nums ${toneOf(r.inflow)}`}>
+                        {signed(r.inflow, 0)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
-            {(data.managers?.length ?? 0) > 3 && (
-              <div className="mt-2 border-t border-etf-line1 pt-1.5 text-meta text-etf-faint">
-                另 {(data.managers?.length ?? 0) - 3} 个多管理人指数
-              </div>
-            )}
+            <div className="mt-2 border-t border-etf-line1 pt-1.5 text-meta text-etf-faint">
+              {(data.managers?.length ?? 0) > 3
+                ? `另 ${(data.managers?.length ?? 0) - 3} 个多管理人指数`
+                : '共 3 个多管理人指数'}
+            </div>
           </section>
 
-          {/* ── 机构持有比例：双列，标题里带报告期 ── */}
-          <section>
-            <h3 className="m-0 mb-2 text-body font-medium text-etf-text">
-              机构持有
-              <span className="ml-2 text-meta font-normal text-etf-faint">
-                季度 · {data.holders?.rows?.[0]?.period ?? '—'}
-              </span>
-            </h3>
-            <div className="mb-2 border-b border-etf-line1 pb-1 text-meta text-etf-faint">按占比降序</div>
+          {/* ── 机构持有 ── */}
+          <section className="flex flex-col">
+            <h3 className="m-0 text-body font-medium text-etf-text">机构持有</h3>
+            <div className="mb-2 mt-1.5 border-b border-etf-line1 pb-1.5 text-meta text-etf-faint">
+              报告期 {data.holders?.rows?.[0]?.period ?? '—'} · 按占比降序
+            </div>
             {(data.holders?.rows?.length ?? 0) > 0 ? (
-              <div className="grid grid-cols-2 gap-x-5 gap-y-1.5">
+              <div className="grid flex-1 content-start grid-cols-2 gap-x-5 gap-y-1.5">
                 {[...(data.holders?.rows ?? [])]
                   .sort((a, b) => b.instPct - a.instPct)
-                  .slice(0, 8)
+                  .slice(0, 12)
                   .map((h) => (
                     <div key={h.code} className="flex items-baseline justify-between gap-2 text-meta">
                       <span className="truncate text-etf-faint" title={`${h.name} ${h.code}`}>
@@ -970,10 +970,10 @@ function Dashboard() {
                   ))}
               </div>
             ) : (
-              <div className="text-meta text-etf-faint">暂未取到 Wind 数据</div>
+              <div className="flex-1 text-meta text-etf-faint">暂未取到 Wind 数据</div>
             )}
             <div className="mt-2 border-t border-etf-line1 pt-1.5 text-meta text-etf-faint">
-              存量证据，不能用于判断单日动作
+              季度存量证据，不能用于判断单日动作
             </div>
           </section>
         </div>
