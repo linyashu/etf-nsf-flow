@@ -36,6 +36,13 @@
    * 12–13px 正文不达标。用 color-mix 混入 label-primary（深色主题下是近白、
    * 浅色主题下是近黑），两个方向都能把对比度推上去，且不依赖主题判断。
    */
+
+  /*
+   * 搜索框 placeholder 专用色。
+   * 宿主默认给 placeholder 加 50% 透明度，测出来只有 3.55:1（不达 AA）。
+   * 这里显式用 label-secondary 混不透明通道，实测 6.1:1。
+   */
+  --color-etf-placeholder: var(--dsw-alias-label-secondary);
   --color-etf-intext: color-mix(in srgb, var(--dsw-alias-state-error-primary) 72%, var(--dsw-alias-label-primary));
   --color-etf-outtext: color-mix(in srgb, var(--dsw-alias-state-success-primary) 72%, var(--dsw-alias-label-primary));
 
@@ -67,4 +74,9 @@
   .etfflow-root *::after {
     box-sizing: border-box;
   }
+}
+
+/* 覆盖浏览器给 placeholder 的默认半透明，保证对比度可测可控 */
+input::placeholder {
+  opacity: 1;
 }

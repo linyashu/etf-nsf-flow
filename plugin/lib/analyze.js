@@ -169,6 +169,9 @@ function buildEnhancement({ axisDates, dayMap, lookback, totalInflow, groups }) 
   const percentile = {
     daily: pctRank(series_last(dailySeries)?.inflow ?? 0),
     sampleDays: sortedVals.length,
+    // 分位必须带口径：样本只有多少天、从哪天开始，否则「100 分位」会被误读成五年极值
+    from: dailySeries.length ? dailySeries[0].date : null,
+    to: dailySeries.length ? dailySeries[dailySeries.length - 1].date : null,
     // 分位参考点，让「88 分位」有直观锚
     marks: [50, 80, 90, 95].map((p) => {
       const idx = Math.min(sortedVals.length - 1, Math.floor((p / 100) * sortedVals.length))
@@ -188,6 +191,8 @@ function buildEnhancement({ axisDates, dayMap, lookback, totalInflow, groups }) 
     streak,
     positiveDays,
     windowDays: windowVals.length,
+    // 前端切换统计窗口时需要按新窗口重算，故输出每日序列
+    daily: dailySeries.map((x) => ({ date: x.date, inflow: round(x.inflow, 2) })),
     // 日均强度（亿元/交易日），用于区分「一天猛灌」与「天天小买」
     avgPerDay: windowVals.length ? round(windowVals.reduce((a, b) => a + b, 0) / windowVals.length, 1) : 0,
     // 集中度：单日最大值占窗口合计的比例，越高说明越依赖一次性脉冲

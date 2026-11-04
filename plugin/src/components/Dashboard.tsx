@@ -13,8 +13,10 @@ const RANGES = [20, 60, 120] as const
 
 /** 按真实交易日数裁剪区间档位，避免出现「点了没反应」的禁用按钮。 */
 function rangeOptionsFor(days: number): Array<number | 'all'> {
-  // 容差 1 天：59 个交易日时也应出现「60 日」，否则会出现「有 59 天却没有 60 档」的空档
-  return [...RANGES.filter((r) => r <= days + 1), 'all']
+  // 只保留「覆盖天数 < 全部天数」的档位。
+  // 原先用 days+1 容差，119 天时会出现「120 日」档，但它与「全部」渲染完全相同的 119 点，
+  // 点了没有任何变化——正是要消灭的「点了没反应」。
+  return [...RANGES.filter((r) => r < days), 'all']
 }
 
 function effectiveRangeOf(rangeN: number | 'all', days: number): number | 'all' {
@@ -83,30 +85,43 @@ function Seg<T extends number | 'all'>({
   )
 }
 
+/** generatedAt 是 UTC ISO 串，必须转本地时区，否则北京用户会看到早 8 小时的时间。 */
+function fmtLocalTime(iso?: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 /** 分位条：把「历史第几分位」画成一条可读刻度。 */
 function PercentileBar({ pct, marks }: { pct: number | null; marks: Array<{ p: number; value: number }> }) {
   if (pct === null) return null
   const clamped = Math.max(0, Math.min(100, pct))
   return (
     <div className="mt-1.5">
-      <div className="relative h-1 rounded-sm bg-etf-layer2">
+      <div
+        className="relative h-1 rounded-sm bg-etf-layer2"
+        role="img"
+        aria-label={`历史分位 ${Math.round(clamped)}%，0 到 100 分位区间`}
+      >
         <div
           className="absolute inset-y-0 left-0 rounded-sm bg-etf-in"
           style={{ width: `${clamped}%` }}
         />
         {[50, 90].map((m) => (
-          <span
-            key={m}
-            aria-hidden
-            className="absolute inset-y-0 w-px bg-etf-line2"
-            style={{ left: `${m}%` }}
-          />
+          <span key={m} aria-hidden className="absolute inset-y-0 w-px bg-etf-line2" style={{ left: `${m}%` }} />
         ))}
       </div>
+      {/* 端点必须对称：左端只写「低」、右端却给具体金额，会让人以为右端就是 90 分位刻度线 */}
       <div className="mt-1 flex justify-between font-etf-mono text-meta tabular-nums text-etf-faint">
-        <span>低</span>
-        {marks.length > 0 && <span>90 分位 {nf(marks.find((m) => m.p === 90)?.value ?? 0, 0)} 亿</span>}
+        <span>0</span>
+        <span>100</span>
       </div>
+      {marks.length > 0 && (
+        <div className="mt-0.5 text-meta leading-4 text-etf-faint">
+          达到 90 分位需单日 {nf(marks.find((m) => m.p === 90)?.value ?? 0, 0)} 亿
+        </div>
+      )}
     </div>
   )
 }
@@ -294,13 +309,71 @@ function Dashboard() {
   const rangeOptions = rangeOptionsFor(availableDays)
   const effectiveRange = effectiveRangeOf(rangeN, availableDays)
 
-  const verdict = buildVerdict(s.composite, lookK, basketNd, s.concentration?.top3 ?? [], s.concentration?.ratio ?? 0)
+  // 集中度必须跟着窗口走（原先固定用服务端按 5 日算的值），但口径要固定用「指数」粒度：
+  // 用板块聚合时只有 13 个分母，宽基一项就占 97%，Top3 直接饱和成 100%，失去信息量。
+  const groupRank = groups.filter((r) => r.val > 0)
+  const windowPositiveSum = groupRank.reduce((a, r) => a + r.val, 0)
+  const windowTop3 = [...groupRank].sort((a, b) => b.val - a.val).slice(0, 3)
+  const windowConcentration = {
+    ratio: windowPositiveSum > 0 ? windowTop3.reduce((a, r) => a + r.val, 0) / windowPositiveSum : 0,
+    top3: windowTop3.map((r) => ({ group: r.name, inflow: r.val })),
+  }
+
+  const verdict = buildVerdict(
+    s.composite,
+    lookK,
+    basketNd,
+    windowConcentration.top3,
+    windowConcentration.ratio,
+  )
   const verdictList = rankAll ? rankRows : rankRows.slice(0, 15)
-  const momRows = (data.momentum ?? []).slice(0, 8)
+  // 原先直接 slice(0,8) 取 delta 降序前 8，会把 Δ 最大但为负的板块（如宽基 -59）
+  // 藏进「另 N 个」。按绝对值排序，进出的两个方向都保留。
+  const momRows = [...(data.momentum ?? [])]
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 8)
   // 归一化必须与显示范围一致：原先用全部 13 个板块取 max，导致前 8 项的条形普遍很短
   const momMax = Math.max(...momRows.map((m) => Math.abs(m.delta)), 1)
   const szLag = Boolean(fr?.shDate && fr?.szDate && fr.szDate < fr.shDate)
+  // 证据链同样必须跟随窗口。服务端只按 lookback=5 预算，切窗口后不能沿用。
   const en = s.enhancement
+  const winPersistence = (() => {
+    const daily = en?.persistence?.daily
+    if (!daily?.length) return en?.persistence ?? null
+    const win = daily.slice(-lookK)
+    const pos = win.filter((d) => d.inflow > 0).length
+    const sum = win.reduce((a, d) => a + d.inflow, 0)
+    let streak = 0
+    for (let i = daily.length - 1; i >= 0; i -= 1) {
+      if (daily[i].inflow > 0) streak += 1
+      else break
+    }
+    const maxDay = win.length ? Math.max(...win.map((d) => d.inflow)) : 0
+    return {
+      streak,
+      positiveDays: pos,
+      windowDays: win.length,
+      avgPerDay: win.length ? sum / win.length : 0,
+      burstShare: sum > 0 ? (maxDay / sum) * 100 : null,
+    }
+  })()
+  // 扩散度同理：按当前窗口的组净申购重算
+  const winDiffusion = (() => {
+    if (!s.groups?.length) return en?.diffusion ?? null
+    const all = groups.map((g) => {
+      const src = s.groups.find((x) => x.group === g.name)
+      return { sector: src?.sector ?? '', value: g.val }
+    })
+    const pos = all.filter((x) => x.value > 0)
+    const broad = all.filter((x) => x.sector === '宽基')
+    return {
+      inflowGroups: pos.length,
+      totalGroups: all.length,
+      ratio: all.length ? pos.length / all.length : 0,
+      broadInflow: broad.filter((x) => x.value > 0).length,
+      broadTotal: broad.length,
+    }
+  })()
 
   return (
     <div className="etfflow-root h-full overflow-auto px-6 pb-12 pt-5">
@@ -309,14 +382,14 @@ function Dashboard() {
         <div>
           <h1 className="m-0 text-title font-medium">国家队资金流监测</h1>
           <div className="mt-1 text-meta text-etf-muted">
-            更新于 {data.generatedAt?.slice(11, 16) ?? '—'} · 份额 {fr?.shareDate ?? s.asOf} · 行情{' '}
+            更新于 {fmtLocalTime(data.generatedAt)} · 份额 {fr?.shareDate ?? s.asOf} · 行情{' '}
             {fr?.quoteDate ?? s.asOf} · {data.coverage.fundCount} 只 ETF · 数据 {availableDays} 个交易日
           </div>
         </div>
         {/* 控件收成一组：组间用 1px 竖线分隔，避免四块错落 */}
         <div className="flex items-center gap-3 rounded-lg border border-etf-line1 px-3 py-2">
           <Seg
-            label="主图"
+            label="主图跨度"
             options={rangeOptions}
             value={effectiveRange}
             onChange={setRangeN}
@@ -324,7 +397,7 @@ function Dashboard() {
           />
           <span aria-hidden className="h-4 w-px bg-etf-line2" />
           <Seg
-            label="窗口"
+            label="统计窗口"
             options={LOOKBACKS}
             value={lookK as (typeof LOOKBACKS)[number]}
             onChange={setLookK}
@@ -362,7 +435,12 @@ function Dashboard() {
 
       {/* 判词：首屏回答「国家队在不在买」 */}
       <Card className="mb-3">
-        <p className="m-0 text-pretty text-lead font-medium text-etf-text">{verdict}</p>
+        <p
+          className="m-0 text-pretty text-lead font-medium text-etf-text"
+          title={`综合评分 ${nf(s.composite, 1)} 分 · 判定阈值：≥55 为买入信号、≥35 为中性、<35 为流出`}
+        >
+          {verdict}
+        </p>
         {/*
           4 个指标排成一条仪表带。
           第一列含仪表盘 + 两行文字，需要比其他列更宽：等分时 1024 下只有 234px，
@@ -407,8 +485,10 @@ function Dashboard() {
                 </span>
               </div>
               <PercentileBar pct={en.percentile.daily} marks={en.percentile.marks} />
-              <div className="mt-1 text-meta text-etf-faint">
-                {en.percentile.sampleDays} 个交易日样本
+              <div className="mt-1 text-meta leading-4 text-etf-faint">
+                {en.percentile.from && en.percentile.to
+                  ? `样本 ${en.percentile.from.slice(5)} 至 ${en.percentile.to.slice(5)}，共 ${en.percentile.sampleDays} 个交易日`
+                  : `${en.percentile.sampleDays} 个交易日样本`}
               </div>
             </div>
 
@@ -416,16 +496,16 @@ function Dashboard() {
               <div className="text-meta text-etf-faint">流入持续性</div>
               <div className="mt-1 flex items-baseline gap-3">
                 <span className="font-etf-mono text-body tabular-nums text-etf-text">
-                  {en.persistence.streak > 0 ? `连续 ${en.persistence.streak} 天` : '未连续流入'}
+                  {winPersistence && winPersistence.streak > 0 ? `连续 ${winPersistence.streak} 天` : '未连续流入'}
                 </span>
                 <span className="font-etf-mono text-meta tabular-nums text-etf-muted">
-                  日均 {nf(en.persistence.avgPerDay, 0)} 亿
+                  日均 {nf(winPersistence?.avgPerDay ?? 0, 0)} 亿
                 </span>
               </div>
               <div className="mt-1 text-meta text-etf-faint">
-                近 {en.persistence.windowDays} 日 {en.persistence.positiveDays} 天为正
-                {en.persistence.burstShare !== null && en.persistence.burstShare >= 50
-                  ? ` · 最大单日占 ${en.persistence.burstShare}%，偏一次性`
+                近 {winPersistence?.windowDays ?? lookK} 日 {winPersistence?.positiveDays ?? 0} 天为正
+                {winPersistence?.burstShare != null && winPersistence.burstShare >= 50
+                  ? ` · 最大单日占 ${nf(winPersistence.burstShare, 0)}%`
                   : ''}
               </div>
             </div>
@@ -434,27 +514,28 @@ function Dashboard() {
               <div className="text-meta text-etf-faint">流入扩散度</div>
               <div className="mt-1 flex items-baseline gap-3">
                 <span className="font-etf-mono text-body tabular-nums text-etf-text">
-                  {en.diffusion.inflowGroups} / {en.diffusion.totalGroups} 指数
+                  {winDiffusion?.inflowGroups ?? 0} / {winDiffusion?.totalGroups ?? 0} 指数
                 </span>
                 <span className="font-etf-mono text-meta tabular-nums text-etf-muted">
-                  宽基 {en.diffusion.broadInflow} / {en.diffusion.broadTotal}
+                  宽基 {winDiffusion?.broadInflow ?? 0} / {winDiffusion?.broadTotal ?? 0}
                 </span>
               </div>
               <div className="mt-1 text-meta text-etf-faint">
-                {en.diffusion.ratio >= 0.7
-                  ? '全面流入，非护盘式集中'
-                  : en.diffusion.ratio >= 0.35
-                    ? '部分扩散，仍有选择性'
-                    : '高度集中，护盘式特征'}
+                {(() => {
+                  const r = winDiffusion?.ratio ?? 0
+                  if (r >= 0.7) return '多数指数流入，覆盖面广'
+                  if (r >= 0.35) return '部分指数流入，仍有选择性'
+                  return '少数指数流入，集中护盘'
+                })()}
               </div>
             </div>
           </div>
         )}
 
         <div className="mt-4 border-t border-etf-line1 pt-3 text-meta text-etf-faint">
-          集中度 Top3 占正流入 {nf((s.concentration?.ratio ?? 0) * 100, 0)}%
-          {s.concentration?.top3?.length
-            ? `（${s.concentration.top3.map((t) => `${t.group} ${signed(t.inflow, 1)}`).join(' · ')}）`
+          集中度 Top3 占正流入 {nf(windowConcentration.ratio * 100, 0)}%（近 {lookK} 日）
+          {windowConcentration.top3.length
+            ? `（${windowConcentration.top3.map((t) => `${t.group} ${signed(t.inflow, 1)}`).join(' · ')}）`
             : ''}
           {szLag ? (
             <>
@@ -565,7 +646,7 @@ function Dashboard() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="名称或代码"
-              className="w-44 rounded-lg border border-etf-line1 bg-etf-layer2 px-3 py-1 text-meta text-etf-text placeholder:text-etf-faint focus:border-etf-line2 focus:outline-none"
+              className="w-44 rounded-lg border border-etf-line1 bg-etf-layer2 px-3 py-1 text-meta text-etf-text placeholder:text-etf-placeholder focus:border-etf-line2 focus:outline-none"
             />
           </div>
         </div>
@@ -601,7 +682,7 @@ function Dashboard() {
           </colgroup>
           <thead>
             <tr>
-              {['ETF', '板块 / 指数', '收盘', '涨跌', `近 ${lookK} 日净申购`, '份额'].map((c) => (
+              {['ETF', '指数 / 板块', '收盘', '涨跌', `近 ${lookK} 日净申购（亿）`, '份额（亿份）'].map((c) => (
                 <th
                   key={c}
                   scope="col"
@@ -704,21 +785,24 @@ function Dashboard() {
                           {(() => {
                             const st = fundStats(series)
                             if (!st) return null
+                            // 每个百分比都必须自带分母/口径，否则「份额位置 100%」和
+                            // 「逆势托底 100%」并列时读者无法分辨这是两件事。
+                            const span = series.length > 1 ? `${series[0].date} 起 ${series.length} 日` : '—'
                             const cells: Array<[string, string, string]> = [
                               ['最新份额', `${nf(st.last.share, 0)} 亿份`, 'text-etf-text'],
-                              ['区间份额变化', `${signed(st.sharePct, 1)}%`, toneOf(st.sharePct)],
-                              ['区间净申购', `${signed(st.inflowSum, 1)} 亿`, toneOf(st.inflowSum)],
+                              [`份额变化（${span}）`, `${signed(st.sharePct, 1)}%`, toneOf(st.sharePct)],
+                              [`累计净申购（${span}）`, `${signed(st.inflowSum, 1)} 亿`, toneOf(st.inflowSum)],
                               [
                                 '连续净流入',
                                 st.streak > 0 ? `${st.streak} 天` : '—',
                                 st.streak > 0 ? 'text-etf-intext' : 'text-etf-muted',
                               ],
-                              ['份额位置', `${nf(st.pos, 0)}%`, 'text-etf-muted'],
-                              ['逆势托底', `${nf((x.contrarian ?? 0) * 100, 0)}%`, 'text-etf-muted'],
-                              ['净申购 / 成交额', `${nf(x.intensity ?? 0, 1)}%`, 'text-etf-muted'],
+                              ['份额在区间的位置', `${nf(st.pos, 0)}%`, 'text-etf-muted'],
+                              ['跌日仍净申购占比', `${nf((x.contrarian ?? 0) * 100, 0)}%`, 'text-etf-muted'],
+                              ['净申购占成交额', `${nf(x.intensity ?? 0, 1)}%`, 'text-etf-muted'],
                               [
-                                '规模分解（亿）',
-                                `${signed(x.shareEffect ?? 0, 0)} / ${signed(x.navEffect ?? 0, 0)}`,
+                                '规模变化拆解（亿）',
+                                `${signed(x.shareEffect ?? 0, 0)} 份额 / ${signed(x.navEffect ?? 0, 0)} 净值`,
                                 'text-etf-muted',
                               ],
                             ]
@@ -900,7 +984,10 @@ function Dashboard() {
             title="市场温度"
             meta={
               <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden className="rounded-sm border border-etf-line2 px-1.5 py-0.5 text-[11px] leading-4">
+                <span
+                  title="这些指标在历史检验中对未来收益不显著，仅用于理解当日状态"
+                  className="rounded-sm border border-etf-line2 px-1.5 py-0.5 text-meta leading-4 text-etf-muted"
+                >
                   描述性
                 </span>
                 不参与评分 · 不预测方向
@@ -913,20 +1000,26 @@ function Dashboard() {
                 <div className="text-meta text-etf-faint">{it.label}</div>
                 <div className="mt-1 flex items-baseline gap-1">
                   <span className="font-etf-mono text-emph tabular-nums text-etf-text">
-                    {nf(it.value, it.unit === '亿' || it.unit === '万亿' ? 0 : 1)}
+                    {nf(it.value, it.digits ?? 0)}
                   </span>
                   <span className="text-meta text-etf-faint">{it.unit}</span>
                 </div>
                 {typeof it.rank === 'number' && (
                   <div className="mt-1.5">
-                    <div className="relative h-1 rounded-sm bg-etf-layer2">
+                    {/* 用描边轨道 + 中性填充，与「参与评分」区块的实心强调色分位条区分，
+                        避免形状暗示把描述性指标读成信号 */}
+                    <div
+                      className="relative h-1 rounded-sm border border-etf-line2 bg-transparent"
+                      role="img"
+                      aria-label={`${it.label} 位于近 ${it.windowDays ?? 30} 个交易日的第 ${Math.round(it.rank)} 分位`}
+                    >
                       <div
-                        className="absolute inset-y-0 left-0 rounded-sm bg-etf-muted"
+                        className="absolute inset-y-0 left-0 rounded-sm bg-etf-faint opacity-60"
                         style={{ width: `${Math.max(2, Math.min(100, it.rank))}%` }}
                       />
                     </div>
                     <div className="mt-1 font-etf-mono text-meta tabular-nums text-etf-faint">
-                      近 30 日 {Math.round(it.rank)} 分位
+                      {it.rankLabel ?? `近 ${it.windowDays ?? 30} 日`} {Math.round(it.rank)} 分位
                     </div>
                   </div>
                 )}

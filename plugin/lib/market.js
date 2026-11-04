@@ -45,9 +45,15 @@ function percentileRank(series, value) {
 export async function marketTemperature(pool, asOf) {
   if (!pool) return null
   const out = { asOf, items: [], note: null }
+  /**
+   * digits 按单位定，不按「亿/万亿」一刀切：
+   *   家/倍 → 计数类，倍留 1 位；万亿/亿 → 金额类，万亿留 2 位、亿取整
+   * windowDays 必须与实际查询窗口一致，否则「近 30 分位」会与 45 天的查询对不上。
+   */
   const push = (key, label, value, unit, extra = {}) => {
     if (value === null || !Number.isFinite(value)) return
-    out.items.push({ key, label, value, unit, ...extra })
+    const digits = unit === '家' ? 0 : unit === '倍' ? 2 : unit === '万亿' ? 2 : 0
+    out.items.push({ key, label, value, unit, digits, ...extra })
   }
 
   try {
@@ -64,6 +70,7 @@ export async function marketTemperature(pool, asOf) {
       const today = zt.rows[zt.rows.length - 1]
       const hist = zt.rows.slice(0, -1).map((r) => Number(r.limit_up))
       push('limitUp', '涨停家数', Number(today.limit_up), '家', {
+        windowDays: hist.length,
         rank: percentileRank(hist, Number(today.limit_up)),
         hint: '短线情绪温度，不预测方向',
       })
@@ -80,6 +87,7 @@ export async function marketTemperature(pool, asOf) {
       const today = brk.rows[brk.rows.length - 1]
       const hist = brk.rows.slice(0, -1).map((r) => Number(r.broken))
       push('limitBreak', '炸板家数', Number(today.broken), '家', {
+        windowDays: hist.length,
         rank: percentileRank(hist, Number(today.broken)),
         hint: '越高说明封板意愿越弱',
       })
@@ -116,6 +124,7 @@ export async function marketTemperature(pool, asOf) {
       const base = mean(series.slice(-21, -1))
       const ratio = base ? (today / base) * 100 : null
       push('turnover', '全市场成交额', today, '亿', {
+        windowDays: series.slice(0, -1).length,
         rank: percentileRank(series.slice(0, -1), today),
         hint: ratio === null ? null : `为 20 日均值的 ${ratio.toFixed(0)}%`,
       })
@@ -137,6 +146,9 @@ export async function marketTemperature(pool, asOf) {
       // 改为展示「相对 20 日均值的位置」+ 环比变化。
       const base20 = mean(series.slice(-21, -1))
       push('margin', '两融余额', today / 1e4, '万亿', {
+        windowDays: series.slice(0, -1).length,
+        // 两融是趋势量，用「相对 20 日均值」而非分位；标注也要改成这个口径
+        rankLabel: '相对 20 日均值',
         rank: base20 ? Math.min(100, Math.max(0, 50 + ((today / base20 - 1) * 100) * 5)) : null,
         hint: `较前日 ${pct(today, prev)?.toFixed(2) ?? '—'}% · 20 日均值 ${((today / base20 - 1) * 100).toFixed(1)}%`,
       })

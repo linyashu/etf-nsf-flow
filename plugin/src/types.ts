@@ -203,6 +203,8 @@ export interface DashboardPayload {
 export interface EnhancementPercentile {
   daily: number | null
   sampleDays: number
+  from?: string | null
+  to?: string | null
   marks: Array<{ p: number; value: number }>
 }
 
@@ -212,6 +214,7 @@ export interface EnhancementPersistence {
   windowDays: number
   avgPerDay: number
   burstShare: number | null
+  daily?: Array<{ date: string; inflow: number }>
 }
 
 export interface EnhancementDiffusion {
@@ -233,6 +236,9 @@ export interface TemperatureItem {
   label: string
   value: number
   unit: string
+  digits?: number
+  windowDays?: number
+  rankLabel?: string
   rank?: number | null
   hint?: string | null
 }

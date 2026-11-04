@@ -45,8 +45,15 @@ export function HeatmapTable({ data }: Props) {
                 {g}
               </th>
             ))}
-            <th scope="col" className="border-b border-etf-line1 py-3 pl-3 text-right text-meta font-normal text-etf-faint">
-              合计
+            {/* 这一列只加总「显示中的」指数，不是全市场合计。
+                原先叫「合计」，与顶部「最新单日 +599 亿」（37 个指数全量）并列时
+                会让人以为同一口径算出了两个不同的数（实测 605 vs 599）。 */}
+            <th
+              scope="col"
+              title="仅为本表显示的指数求和，不等于全市场合计"
+              className="border-b border-etf-line1 py-3 pl-3 text-right text-meta font-normal text-etf-faint"
+            >
+              {groups.length} 项小计
             </th>
           </tr>
         </thead>
@@ -57,7 +64,7 @@ export function HeatmapTable({ data }: Props) {
               {row.values.map((v, i) => (
                 <td
                   key={`${row.date}-${groups[i]}`}
-                  title={`${row.date} ${groups[i]} ${signed(v)} 亿`}
+                  title={`${row.date} ${groups[i]} ${signed(v, 1)} 亿元`}
                   className="px-1 py-1"
                   style={{
                     background:
@@ -69,12 +76,13 @@ export function HeatmapTable({ data }: Props) {
                   }}
                 >
                   <div className="text-right font-etf-mono text-meta tabular-nums text-etf-text">
-                    {v === 0 ? '·' : signed(v, Math.abs(v) >= 100 ? 0 : 1)}
+                    {/* 原先 0 画成「·」，会把「流入 0 亿」误读成「没有数据」 */}
+                    {signed(v, 1)}
                   </div>
                 </td>
               ))}
               <td className="py-1 pl-3 text-right font-etf-mono text-meta font-medium tabular-nums text-etf-text">
-                {signed(row.total, Math.abs(row.total) >= 100 ? 0 : 1)}
+                {signed(row.total, 1)}
               </td>
             </tr>
           ))}
@@ -82,6 +90,7 @@ export function HeatmapTable({ data }: Props) {
       </table>
       <div className="mt-3 flex flex-wrap items-center gap-4 text-meta text-etf-faint">
         <span>近 {dates.length} 个交易日 · 单位亿元</span>
+        <span>小计仅含本表 {groups.length} 个指数</span>
         <span className="inline-flex items-center gap-2">
           <i
             className="block h-3 w-3 rounded-sm"
