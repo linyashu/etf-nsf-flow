@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-04T02:06:42Z",
+  "title": "Design System: 国家队资金流监测",
+  "extensions": {
+    "colorMeta": {
+      "flow-in": {
+        "role": "primary",
+        "displayName": "流入红",
+        "canonical": "dark #e5484d / light #dc2626",
+        "tonalRamp": [
+          "#1f1011",
+          "#3a1a1b",
+          "#582324",
+          "#7a292c",
+          "#963336",
+          "#a84245",
+          "#b65356",
+          "#c16669"
+        ],
+        "note": "全屏唯一强调色，只标记「钱在进来」。深色/浅色由宿主主题切换。"
+      },
+      "flow-out": {
+        "role": "secondary",
+        "displayName": "流出绿",
+        "canonical": "dark #4cc38a / light #16a34a",
+        "tonalRamp": [
+          "#14211b",
+          "#213d30",
+          "#2b5b44",
+          "#337b59",
+          "#3f986d",
+          "#53ad82",
+          "#68c096",
+          "#80d1ab"
+        ],
+        "note": "压暗使用，不与流入红争抢注意力。"
+      },
+      "surface-card": {
+        "role": "neutral",
+        "displayName": "卡面",
+        "canonical": "dark #19191b / light #ffffff",
+        "tonalRamp": [
+          "#242425",
+          "#3f3f42",
+          "#5a5a60",
+          "#75757d",
+          "#90909a",
+          "#ababb6",
+          "#c7c7d2",
+          "#e3e3ed"
+        ]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "抬升面",
+        "canonical": "dark #232325 / light #f4f4f5",
+        "tonalRamp": [
+          "#242426",
+          "#404043",
+          "#5c5c60",
+          "#77777d",
+          "#93939a",
+          "#afafb7",
+          "#cbcbd3",
+          "#e7e7ee"
+        ]
+      },
+      "ink-primary": {
+        "role": "neutral",
+        "displayName": "主文字",
+        "canonical": "dark #ededed / light #171717",
+        "tonalRamp": [
+          "#262626",
+          "#434343",
+          "#616161",
+          "#7e7e7e",
+          "#9b9b9b",
+          "#b8b8b8",
+          "#d5d5d5",
+          "#f2f2f2"
+        ]
+      },
+      "ink-tertiary": {
+        "role": "neutral",
+        "displayName": "弱文字",
+        "canonical": "dark #85858b / light #737373",
+        "tonalRamp": [
+          "#252526",
+          "#414143",
+          "#5d5d60",
+          "#78787d",
+          "#94949b",
+          "#b1b1b7",
+          "#cdcdd3",
+          "#e9e9ef"
+        ],
+        "note": "最小对比度档，深色 4.79:1，已贴近 AA 下沿，不再往下压。"
+      }
+    },
+    "typographyMeta": {
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "标签、单位、注释、脚注。最小字号，禁止更小。"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "表格单元格与正文。"
+      },
+      "emph": {
+        "displayName": "Emph",
+        "purpose": "卡片标题与区块内主数值。"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "页面标题。"
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "判词行，首屏唯一结论句。"
+      },
+      "stat": {
+        "displayName": "Stat",
+        "purpose": "大数字，仅在需要一眼抓总量时用。"
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "一切数字。等宽 + tabular-nums，让表格逐行对齐。"
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "状态切换默认缓动。"
+      },
+      {
+        "name": "duration-fast",
+        "value": "150ms",
+        "purpose": "颜色与背景过渡。系统中没有入场动画。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px",
+        "purpose": "判词带从独占整行切到多列。"
+      },
+      {
+        "name": "lg",
+        "value": "1024px",
+        "purpose": "判词带四列 1.8fr:1fr:1fr:1fr。"
+      },
+      {
+        "name": "xl",
+        "value": "1280px",
+        "purpose": "主图与排行左右并排。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "所有内容区块的容器。无阴影，靠 1px 描边与一档背景提亮界定。",
+      "html": "<div class=\"ds-card\">卡片内容</div>",
+      "css": ".ds-card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;padding:20px;}"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "seg-item",
+      "description": "主图跨度 / 统计窗口 / 排行切换。选中靠提亮一档背景 + 500 字重。",
+      "html": "<div class=\"ds-seg\"><button class=\"ds-seg-item ds-seg-item-active\">5 日</button><button class=\"ds-seg-item\">20 日</button></div>",
+      "css": ".ds-seg{display:inline-flex;gap:2px;background:var(--dsw-alias-bg-layer-2);border-radius:8px;padding:4px;}.ds-seg-item{border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;padding:4px 8px;border-radius:6px;cursor:pointer;transition:background .15s,color .15s;font-variant-numeric:tabular-nums;}.ds-seg-item:hover{color:var(--dsw-alias-label-primary);}.ds-seg-item-active{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-weight:500;}"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-filter",
+      "description": "板块筛选。无外层容器，直接平铺，激活态提亮背景。",
+      "html": "<button class=\"ds-chip ds-chip-active\">宽基</button>",
+      "css": ".ds-chip{border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;padding:4px 8px;border-radius:6px;cursor:pointer;transition:background .15s,color .15s;}.ds-chip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}.ds-chip-active{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);}"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "ETF 搜索框。placeholder 必须显式覆盖 opacity，否则只有 3.55:1。",
+      "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"名称或代码\">",
+      "css": ".ds-input{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:4px 12px;font-size:12px;color:var(--dsw-alias-label-primary);height:26px;outline:none;transition:border-color .15s;}.ds-input::placeholder{color:var(--dsw-alias-label-secondary);opacity:1;}.ds-input:focus{border-color:var(--dsw-alias-border-l2);}"
+    },
+    {
+      "name": "Progress Bar",
+      "kind": "custom",
+      "description": "分位条。参与评分的指标用实心强调色，描述性指标用描边轨道 + 中性填充——同样的形状不能同时表示信号与非信号。",
+      "html": "<div class=\"ds-bar ds-bar-signal\"><i style=\"width:72%\"></i></div>",
+      "css": ".ds-bar{position:relative;height:4px;border-radius:2px;background:var(--dsw-alias-bg-layer-2);overflow:hidden;}.ds-bar i{position:absolute;inset:0 auto 0 0;display:block;border-radius:2px;}.ds-bar-signal i{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 72%,var(--dsw-alias-label-primary));}.ds-bar-desc{background:transparent;border:1px solid var(--dsw-alias-border-l2);}.ds-bar-desc i{background:var(--dsw-alias-label-tertiary);opacity:.6;}"
+    },
+    {
+      "name": "Verdict Card",
+      "kind": "custom",
+      "description": "面板入口。判词行 → 仪表带 → 证据链 → 口径行四层结构。",
+      "html": "<div class=\"ds-card ds-verdict\"><p class=\"ds-verdict-line\">国家队在买：近 5 日 +1,381.1 亿，72% 集中在 沪深300、科创50、中证1000。</p><div class=\"ds-verdict-band\"><div><span class=\"ds-verdict-label\">近 5 日净申购</span><strong class=\"ds-verdict-num\">+1,381.1 亿</strong></div></div></div>",
+      "css": ".ds-verdict{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:12px;padding:20px;}.ds-verdict-line{margin:0;font-size:20px;line-height:1.6;font-weight:500;color:var(--dsw-alias-label-primary);}.ds-verdict-band{display:flex;margin-top:20px;padding-top:16px;border-top:1px solid var(--dsw-alias-border-l1);gap:24px;}.ds-verdict-label{display:block;font-size:12px;color:var(--dsw-alias-label-tertiary);}.ds-verdict-num{margin-top:4px;display:block;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 72%,var(--dsw-alias-label-primary));}"
+    }
+  ],
+  "narrative": {
+    "northStar": "夜盘交易台",
+    "overview": "这个面板不是一份报告，而是一块夜间盯盘的仪表。使用者在收盘后打开它两分钟，需要的不是被说服，而是看清当前读数与它偏离常态的程度。因此界面不追求表现力，追求的是读数精度与零歧义——数字必须自带身份（单位、分母、时间窗口、样本量），标签必须贴着它修饰的那个数，不允许读者靠位置去猜归属。克制是手段而非目的：所有装饰性元素被移出，颜色预算几乎全部让给「钱在进出」这一件事。",
+    "keyCharacteristics": [
+      "无投影、无渐变、无发光。深度只用 background 层级与 1px 描边表达",
+      "单一强调色：红＝流入。绿＝流出时压暗使用",
+      "数字一律等宽 + tabular-nums，表格可逐行对齐扫读",
+      "字号只允许六档，间距只走 4px 网格",
+      "描述性指标与参与评分的指标在形状上区分",
+      "颜色从不单独承载语义：所有涨跌都同时带 +/- 号"
+    ],
+    "rules": [
+      {
+        "name": "The One Voice Rule",
+        "body": "强调色全屏只出现在「钱在进来」这件事上，占比不超过 10%。",
+        "section": "colors"
+      },
+      {
+        "name": "The Paired Sign Rule",
+        "body": "颜色从不单独承载语义。每一处涨跌值都同时带 +/- 号。",
+        "section": "colors"
+      },
+      {
+        "name": "The Mixed Text Rule",
+        "body": "语义色做文字必须经过 color-mix 与当前主题文字色混合，不得直接使用宿主 state-*-primary。",
+        "section": "colors"
+      },
+      {
+        "name": "The Six-Step Rule",
+        "body": "字号只有六档：12 / 13 / 14 / 16 / 20 / 28。不新增档位。",
+        "section": "typography"
+      },
+      {
+        "name": "The Number Is Mono Rule",
+        "body": "任何呈现数字的文本都用等宽体并开启 tabular-nums。",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Scroll Rule",
+        "body": "页面在任何宽度下都不得出现横向滚动条。",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "表面永远是平的。需要区分层级时加深或提亮一档背景，不添加阴影。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 让每个数值自带单位与口径",
+      "Do 用等宽体 + tabular-nums 呈现一切数字",
+      "Do 把描述性与参与评分的指标在形状上区分开",
+      "Do 在深色与浅色两个主题下都实测对比度",
+      "Do 让统计窗口控件作用于页面上所有相关区块",
+      "Do 用 color-mix 把语义色混入当前主题文字色"
+    ],
+    "donts": [
+      "Don't 使用阴影、渐变、发光、背景模糊",
+      "Don't 新增字号档位",
+      "Don't 用强调色标注非「资金流入」的东西",
+      "Don't 让颜色单独承载语义",
+      "Don't 把口径写在页脚充当免责声明",
+      "Don't 用「·」之类的符号表示 0 值",
+      "Don't 在同一张卡里混排不同时间窗口的数字",
+      "Don't 在插件里加入数据写入逻辑"
+    ]
+  }
+}

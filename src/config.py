@@ -10,15 +10,38 @@ WEB_DIR = ROOT / "web"
 
 DATA_DIR.mkdir(exist_ok=True)
 
+
+def _load_dotenv(path: Path) -> None:
+    """极简 .env 加载器（不引入 python-dotenv 依赖）。
+
+    只处理 KEY=VALUE 与 # 注释，不覆盖已存在的环境变量，
+    这样 CI / shell 里 export 的优先级更高。
+    """
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(ROOT / ".env")
+
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 if not TUSHARE_TOKEN:
     raise SystemExit(
-        "缺少 TUSHARE_TOKEN 环境变量。请复制 .env.example 为 .env 并填入自己的 token。"
+        "缺少 TUSHARE_TOKEN。请执行 `cp .env.example .env` 并填入自己的 token，"
+        "或直接 export TUSHARE_TOKEN=..."
     )
 
 DB = {
-    "host": os.getenv("ETF_DB_HOST", "www.lys153.xyz"),
-    "port": int(os.getenv("ETF_DB_PORT", "5433")),
+    "host": os.getenv("ETF_DB_HOST", "127.0.0.1"),
+    "port": int(os.getenv("ETF_DB_PORT", "5432")),
     "dbname": os.getenv("ETF_DB_NAME", "timescaledb"),
     "user": os.getenv("ETF_DB_USER", "postgres"),
     "password": os.getenv("ETF_DB_PASSWORD", ""),

@@ -20,9 +20,15 @@ cordis.patch.local.yml
 logs/
 backups/
 data/*.json
+# web/data.json 是 run.py 的导出产物，每次导出都会变；克隆后用 run.py 重新生成
+web/data.json
 screenshots/
-.impeccable/
 .dsh/
+
+# ── Impeccable ──
+# design.json 是设计系统的机器可读扩展层，随仓库走；
+# critique/ 是本地评审存档，不提交。
+.impeccable/critique/
 
 # ── 构建产物 ──
 plugin/client.js
