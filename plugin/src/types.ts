@@ -105,8 +105,9 @@ export interface ManagerGroup {
 
 export interface HeatCell {
   date: string
-  values: number[]
-  total: number
+  values: Array<number | null>
+  total: number | null
+  missing?: number
 }
 
 export interface HolderRow {

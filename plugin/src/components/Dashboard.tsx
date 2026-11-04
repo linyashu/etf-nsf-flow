@@ -114,8 +114,8 @@ function PercentileBar({ pct, marks }: { pct: number | null; marks: Array<{ p: n
       </div>
       {/* 端点必须对称：左端只写「低」、右端却给具体金额，会让人以为右端就是 90 分位刻度线 */}
       <div className="mt-1 flex justify-between font-etf-mono text-meta tabular-nums text-etf-faint">
-        <span>0</span>
-        <span>100</span>
+        <span>0 分位</span>
+        <span>100 分位</span>
       </div>
       {marks.length > 0 && (
         <div className="mt-0.5 text-meta leading-4 text-etf-faint">
@@ -481,14 +481,18 @@ function Dashboard() {
               <div className="flex items-baseline justify-between">
                 <span className="text-meta text-etf-faint">单日净申购历史分位</span>
                 <span className="font-etf-mono text-body tabular-nums text-etf-text">
-                  {en.percentile.daily === null ? '—' : `${en.percentile.daily}%`}
+                  {en.percentile.daily === null ? '—' : `第 ${en.percentile.daily} 分位`}
                 </span>
               </div>
               <PercentileBar pct={en.percentile.daily} marks={en.percentile.marks} />
               <div className="mt-1 text-meta leading-4 text-etf-faint">
-                {en.percentile.from && en.percentile.to
-                  ? `样本 ${en.percentile.from.slice(5)} 至 ${en.percentile.to.slice(5)}，共 ${en.percentile.sampleDays} 个交易日`
-                  : `${en.percentile.sampleDays} 个交易日样本`}
+                {(() => {
+                  const short = (d?: string | null) =>
+                    !d ? '—' : d.includes('-') ? d.slice(5) : `${d.slice(4, 6)}-${d.slice(6, 8)}`
+                  return en.percentile.from && en.percentile.to
+                    ? `样本 ${short(en.percentile.from)} 至 ${short(en.percentile.to)}，共 ${en.percentile.sampleDays} 个交易日`
+                    : `${en.percentile.sampleDays} 个交易日样本`
+                })()}
               </div>
             </div>
 
@@ -757,7 +761,7 @@ function Dashboard() {
                       {signed(x.val, 2)}
                     </td>
                     <td className="py-2 pl-3 text-right font-etf-mono tabular-nums text-etf-muted">
-                      {nf(x.share, 0)} 亿份
+                      {nf(x.share, 0)}
                     </td>
                     <td className="py-2 pl-2 text-right">
                       <svg

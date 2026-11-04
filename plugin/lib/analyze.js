@@ -709,12 +709,21 @@ export function heatmap(panel, { days = 20, topGroups = 10 } = {}) {
   for (const d of dates) {
     const row = []
     for (const g of groups) {
-      const v = round(cellMap.get(`${d}|${g}`) ?? 0, 2)
+      const key = `${d}|${g}`
+      // 关键：「该日该指数无数据」≠「净申购为 0」。
+      // 深市份额 T+1，最新一日通常只有沪市，深市指数的当日格子必须留空（null），
+      // 不能填 0——否则会被读成「这个指数今天一点没买」。
+      if (!cellMap.has(key)) {
+        row.push(null)
+        continue
+      }
+      const v = round(cellMap.get(key), 2)
       if (Math.abs(v) > max) max = Math.abs(v)
       row.push(v)
     }
-    const total = round(row.reduce((a, b) => a + b, 0), 2)
-    cells.push({ date: ymd(d), values: row, total })
+    const present = row.filter((v) => v !== null)
+    const total = present.length ? round(present.reduce((a, b) => a + b, 0), 2) : null
+    cells.push({ date: ymd(d), values: row, total, missing: row.length - present.length })
   }
 
   return { dates: dates.map(ymd), groups, cells: cells.reverse(), max: round(max, 2) }

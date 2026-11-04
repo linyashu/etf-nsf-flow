@@ -24,6 +24,8 @@ export function HeatmapTable({ data }: Props) {
 
   const { dates, groups, cells, max } = data
   const denom = max || 1
+  // 有缺失格时表头要说明，否则读者会把留空当成 0
+  const hasMissing = cells.some((row) => (row.missing ?? 0) > 0)
 
   /** 强度 -> 透明度，封顶 0.42 保证数字始终可读 */
   const alphaOf = (v: number) => Math.min(0.42, (Math.abs(v) / denom) * 0.42)
@@ -61,28 +63,40 @@ export function HeatmapTable({ data }: Props) {
           {cells.map((row) => (
             <tr key={row.date} className="border-b border-etf-line1">
               <td className="py-1 pr-3 font-etf-mono text-meta tabular-nums text-etf-muted">{row.date}</td>
-              {row.values.map((v, i) => (
-                <td
-                  key={`${row.date}-${groups[i]}`}
-                  title={`${row.date} ${groups[i]} ${signed(v, 1)} 亿元`}
-                  className="px-1 py-1"
-                  style={{
-                    background:
-                      v === 0
-                        ? 'transparent'
-                        : v > 0
-                          ? `color-mix(in srgb, ${IN_RGB} ${alphaOf(v) * 100}%, transparent)`
-                          : `color-mix(in srgb, ${OUT_RGB} ${alphaOf(v) * 100}%, transparent)`,
-                  }}
-                >
-                  <div className="text-right font-etf-mono text-meta tabular-nums text-etf-text">
-                    {/* 原先 0 画成「·」，会把「流入 0 亿」误读成「没有数据」 */}
-                    {signed(v, 1)}
-                  </div>
-                </td>
-              ))}
+              {row.values.map((v, i) => {
+                if (v === null) {
+                  return (
+                    <td
+                      key={`${row.date}-${groups[i]}`}
+                      className="px-1 py-1"
+                      title={`${row.date} ${groups[i]}：当日份额尚未披露`}
+                    >
+                      <div className="text-right font-etf-mono text-meta tabular-nums text-etf-faint">—</div>
+                    </td>
+                  )
+                }
+                return (
+                  <td
+                    key={`${row.date}-${groups[i]}`}
+                    title={`${row.date} ${groups[i]} ${signed(v, 1)} 亿元`}
+                    className="px-1 py-1"
+                    style={{
+                      background:
+                        v === 0
+                          ? 'transparent'
+                          : v > 0
+                            ? `color-mix(in srgb, ${IN_RGB} ${alphaOf(v) * 100}%, transparent)`
+                            : `color-mix(in srgb, ${OUT_RGB} ${alphaOf(v) * 100}%, transparent)`,
+                    }}
+                  >
+                    <div className="text-right font-etf-mono text-meta tabular-nums text-etf-text">
+                      {signed(v, 1)}
+                    </div>
+                  </td>
+                )
+              })}
               <td className="py-1 pl-3 text-right font-etf-mono text-meta font-medium tabular-nums text-etf-text">
-                {signed(row.total, 1)}
+                {row.total === null ? '—' : signed(row.total, 1)}
               </td>
             </tr>
           ))}
@@ -91,6 +105,7 @@ export function HeatmapTable({ data }: Props) {
       <div className="mt-3 flex flex-wrap items-center gap-4 text-meta text-etf-faint">
         <span>近 {dates.length} 个交易日 · 单位亿元</span>
         <span>小计仅含本表 {groups.length} 个指数</span>
+        {hasMissing && <span>「—」为当日份额尚未披露（深市 T+1），非零流入</span>}
         <span className="inline-flex items-center gap-2">
           <i
             className="block h-3 w-3 rounded-sm"
