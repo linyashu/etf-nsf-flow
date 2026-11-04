@@ -25,7 +25,7 @@ plugin/          DeepSeek Harness 插件（Host + React 客户端）
   lib/           分析层（纯函数，无 I/O）
     analyze.js   核心指标计算
     market.js    市场温度（描述性指标）
-    intraday.js  盘中量能预警（腾讯行情，交易时段才拉取）
+    intraday.js  盘中量能预警（腾讯行情，盘前除外都拉取）
     store.js     TimescaleDB 只读访问
     sources.js   上交所份额补充
     tushare.js   tushare HTTP 客户端
