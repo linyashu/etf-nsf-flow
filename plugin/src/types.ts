@@ -193,6 +193,7 @@ export interface DashboardPayload {
   holders: Holders
   momentum: MomentumRow[]
   temperature?: MarketTemperature | null
+  intraday?: IntradayAlert | null
   managers: ManagerGroup[]
   heatmap: Heatmap
   seriesGroups: Record<string, Array<{ date: string; inflow: number }>>
@@ -248,4 +249,30 @@ export interface MarketTemperature {
   asOf: string
   items: TemperatureItem[]
   note: string | null
+}
+export interface IntradayRow {
+  code: string
+  name: string
+  amountYi: number
+  pct: number | null
+  netActiveYi: number | null
+  dailyAvgYi: number | null
+  multiple: number | null
+}
+
+export interface IntradayAlert {
+  session: { ratio: number; phase: string; elapsedMinutes: number; progress: number | null }
+  asOfDate: string | null
+  shareDate?: string | null
+  quoteTime: string | null
+  totals: {
+    amountYi: number
+    netActiveYi: number
+    baselineYi: number | null
+    multiple: number | null
+    dayRatio: number | null
+  }
+  top: IntradayRow[]
+  rows: IntradayRow[]
+  warn: { amount: string; netActive: string; predictable: string }
 }

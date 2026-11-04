@@ -146,6 +146,28 @@ CREATE TABLE IF NOT EXISTS index_daily (
     return rows.length
   }
 
+  /**
+   * 各标的近 N 日日均成交额（亿元）。
+   * etf_daily.amount 单位是千元（tushare fund_daily 口径），/1e5 转亿元。
+   */
+  async dailyAvgAmount(codes, days = 20) {
+    if (!this.pool) return new Map()
+    const r = await this.pool.query(
+      `SELECT ts_code, avg(amount) AS avg_amount FROM (
+         SELECT ts_code, amount,
+                row_number() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
+           FROM etf_daily WHERE ts_code = ANY($1)
+       ) t WHERE rn <= $2 GROUP BY ts_code`,
+      [codes, days],
+    )
+    const m = new Map()
+    for (const row of r.rows) {
+      const v = Number(row.avg_amount)
+      if (Number.isFinite(v) && v > 0) m.set(row.ts_code, v / 1e5)
+    }
+    return m
+  }
+
   /** 读回面板数据，返回与实时模式一致的裸行结构。 */
   async load(codes, fromDate, benchCode) {
     if (!this.pool) return null

@@ -332,6 +332,7 @@ function Dashboard() {
   const szLag = Boolean(fr?.shDate && fr?.szDate && fr.szDate < fr.shDate)
   // 证据链同样必须跟随窗口。服务端只按 lookback=5 预算，切窗口后不能沿用。
   const en = s.enhancement
+  const todayDate = new Date().toISOString().slice(0, 10)
   const winPersistence = (() => {
     const daily = en?.persistence?.daily
     if (!daily?.length) return en?.persistence ?? null
@@ -551,6 +552,132 @@ function Dashboard() {
           ) : null}
         </div>
       </Card>
+
+      {/* 盘中量能预警：份额是 T+1，这是唯一能当天看到的信号 */}
+      {data.intraday && (
+        <Card className="mb-3">
+          <Head
+            title="盘中量能"
+            meta={
+              <span className="inline-flex items-center gap-2">
+                <span
+                  title="成交额是换手，任何人都会贡献；宽基 ETF 一二级套利会产生反向成交"
+                  className="rounded-sm border border-etf-line2 px-1.5 py-0.5 text-meta leading-4 text-etf-muted"
+                >
+                  预警信号
+                </span>
+                <span>
+                  {data.intraday.session.phase === 'lunch'
+                    ? '午间休市'
+                    : data.intraday.session.phase === 'afternoon'
+                      ? '下午盘'
+                      : '上午盘'}
+                  {' · '}
+                  进度 {Math.round((data.intraday.session.progress ?? 0) * 100)}%
+                  {' · '}
+                  {data.intraday.asOfDate === todayDate ? '今日实时' : `${data.intraday.asOfDate} 实时`}
+                </span>
+              </span>
+            }
+          />
+
+          {/* 三格：倍数 / 成交额 / 主动净买入。与判词带同样「标签 → 主值 → 辅助行」结构 */}
+          <div className="grid grid-cols-1 gap-y-4 border-y border-etf-line1 py-4 sm:grid-cols-3 sm:divide-x sm:divide-etf-line1">
+            <div className="flex flex-col sm:pr-6">
+              <div className="text-meta text-etf-faint">成交额放大倍数</div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="font-etf-mono text-lead tabular-nums text-etf-text">
+                  {data.intraday.totals.multiple === null ? '—' : `${nf(data.intraday.totals.multiple, 2)}×`}
+                </span>
+                <span className="text-meta text-etf-muted">较同时点历史均值</span>
+              </div>
+              <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
+                {data.intraday.totals.multiple === null
+                  ? '缺少 20 日均额基准'
+                  : data.intraday.totals.multiple >= 2
+                    ? '显著放量，值得盯'
+                    : data.intraday.totals.multiple >= 1.4
+                      ? '温和放量'
+                      : '量能平淡'}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:px-6">
+              <div className="text-meta text-etf-faint">合计成交额</div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="font-etf-mono text-lead tabular-nums text-etf-text">
+                  {nf(data.intraday.totals.amountYi, 0)}
+                </span>
+                <span className="text-meta text-etf-muted">亿元</span>
+              </div>
+              <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
+                {data.intraday.totals.dayRatio === null
+                  ? '—'
+                  : `已达成全天日均 ${nf(data.intraday.totals.dayRatio, 2)}×`}
+                {data.intraday.totals.baselineYi !== null
+                  ? ` · 基准 ${nf(data.intraday.totals.baselineYi, 0)} 亿`
+                  : ''}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:pl-6">
+              <div className="text-meta text-etf-faint">主动净买入</div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span
+                  className={`font-etf-mono text-lead tabular-nums ${
+                    data.intraday.totals.netActiveYi >= 0 ? 'text-etf-intext' : 'text-etf-outtext'
+                  }`}
+                >
+                  {signed(data.intraday.totals.netActiveYi, 2)}
+                </span>
+                <span className="text-meta text-etf-muted">亿元</span>
+              </div>
+              <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
+                外盘−内盘推算，非资金净流入
+              </div>
+            </div>
+          </div>
+
+          {/* Top 放量标的：列标签必须在数据上方 */}
+          <div className="mt-4">
+            <div className="mb-2 grid grid-cols-[1fr_84px_64px_64px] gap-2 text-meta text-etf-faint">
+              <span>成交额 Top 5</span>
+              <span className="text-right">成交额</span>
+              <span className="text-right">倍数</span>
+              <span className="text-right">主动净买</span>
+            </div>
+            <div className="grid gap-1.5">
+              {data.intraday.top.slice(0, 5).map((r) => (
+                <div key={r.code} className="grid grid-cols-[1fr_84px_64px_64px] items-center gap-2 text-meta">
+                  <span className="truncate text-etf-muted" title={`${r.name} ${r.code}`}>
+                    {r.name}
+                  </span>
+                  <span className="text-right font-etf-mono tabular-nums text-etf-text">
+                    {nf(r.amountYi, 1)} 亿
+                  </span>
+                  <span className="text-right font-etf-mono tabular-nums text-etf-muted">
+                    {r.multiple === null ? '—' : `${nf(r.multiple, 2)}×`}
+                  </span>
+                  <span
+                    className={`text-right font-etf-mono tabular-nums ${
+                      (r.netActiveYi ?? 0) >= 0 ? 'text-etf-intext' : 'text-etf-outtext'
+                    }`}
+                  >
+                    {r.netActiveYi === null ? '—' : signed(r.netActiveYi, 1)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 border-t border-etf-line1 pt-1.5 text-meta text-etf-faint">
+              共 {data.intraday.rows.length} 只标的参与计算
+            </div>
+          </div>
+
+          <div className="mt-3 border-t border-etf-line1 pt-2 text-meta leading-4 text-etf-faint">
+            {data.intraday.warn.amount} {data.intraday.warn.netActive} {data.intraday.warn.predictable}
+          </div>
+        </Card>
+      )}
 
       {/* 主图 + 资金流向 */}
       <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[2.5fr_1fr]">

@@ -10,6 +10,7 @@ import { BASKET, BENCH, UNIVERSE, basketCodes, buildPanel, computeSignals, fundD
 import { compactToDash, fetchSSELatest, fetchSharesChunked } from './lib/sources.js'
 import { Store } from './lib/store.js'
 import { marketTemperature } from './lib/market.js'
+import { buildIntraday, fetchQuotes, sessionProgress } from './lib/intraday.js'
 import { fetchHolderStructure } from './lib/wind.js'
 import { fmtDate, query, toObjects } from './lib/tushare.js'
 
@@ -227,6 +228,25 @@ export function apply(ctx, config = {}) {
       }
     }
 
+    // 盘中量能预警：份额是 T+1，盘中唯一能「当天就知道」的信号是成交额。
+    // 只在交易时段拉取（盘前/收盘后无意义），且必须 store 可用（需要 20 日均额基准）。
+    let intraday = null
+    const phase = sessionProgress().phase
+    if (store?.pool && (phase === 'morning' || phase === 'lunch' || phase === 'afternoon')) {
+      try {
+        const [quotes, avg] = await Promise.all([
+          fetchQuotes(codes, { signal }),
+          store.dailyAvgAmount(codes, 20),
+        ])
+        intraday = buildIntraday(quotes, avg, {
+          now: new Date(),
+          asOfDate: fmtDate(allDates[allDates.length - 1]),
+        })
+      } catch {
+        intraday = null
+      }
+    }
+
     const funds = fundDetail(trimmed, 5, names)
     const gSeries = groupSeries(trimmed, Math.min(lookbackDays, 120))
     const fSeries = fundSeries(trimmed, Math.min(lookbackDays, 120))
@@ -280,6 +300,7 @@ export function apply(ctx, config = {}) {
       momentum,
       managers,
       temperature,
+      intraday,
       heatmap: heat,
       seriesGroups: gSeries,
       seriesFund: fSeries,
