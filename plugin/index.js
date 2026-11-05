@@ -230,22 +230,29 @@ export function apply(ctx, config = {}) {
 
     // 盘中量能预警：份额是 T+1，这是唯一能「当天就知道」的信号。
     //
-    // 收盘后也要拉：15:00 之后行情仍是当天完整数据，此时倍数是「全天 vs 20日均额」，
-    // 正是当天最终的量能结论。盘前（pre）才没有意义。
-    // 非交易日靠「行情日期是否等于北京今天」过滤——周末拉到的会是上一交易日数据。
+    // 卡片必须在任何时刻都可见——曾两次因为「这个时点没意义」而隐藏整张卡，
+    // 用户都以为是坏了（盘前 / 收盘后各一次）。正确做法是让口径随时刻变化：
+    //
+    //   盘前 pre         → 行情仍是上一交易日，展示「上一交易日全天」并标注日期
+    //   交易中/收盘后     → 行情是今天，展示今日实时/全天
+    //   非交易日（周末）  → 行情是上一交易日，等同于「上一交易日全天」
+    //
+    // 唯一不显示的情况：行情拉取失败或库不可用（真要报错的场景）。
     let intraday = null
-    if (store?.pool && sessionProgress().phase !== 'pre') {
+    if (store?.pool) {
       try {
         const [quotes, avg] = await Promise.all([
           fetchQuotes(codes, { signal }),
           store.dailyAvgAmount(codes, 20),
         ])
-        const built = buildIntraday(quotes, avg, {
+        intraday = buildIntraday(quotes, avg, {
           now: new Date(),
           asOfDate: fmtDate(allDates[allDates.length - 1]),
         })
-        // 行情日期不是今天 → 今天没交易（周末/节假日），不展示「今日量能」
-        intraday = built && built.asOfDate === todayBeijing() ? built : null
+        if (intraday) {
+          // isToday=false 时前端会标明「这是上一交易日的数据」，避免误读为今日
+          intraday.isToday = intraday.asOfDate === todayBeijing()
+        }
       } catch {
         intraday = null
       }

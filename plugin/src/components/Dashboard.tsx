@@ -332,7 +332,6 @@ function Dashboard() {
   const szLag = Boolean(fr?.shDate && fr?.szDate && fr.szDate < fr.shDate)
   // 证据链同样必须跟随窗口。服务端只按 lookback=5 预算，切窗口后不能沿用。
   const en = s.enhancement
-  const todayDate = new Date().toISOString().slice(0, 10)
   const winPersistence = (() => {
     const daily = en?.persistence?.daily
     if (!daily?.length) return en?.persistence ?? null
@@ -649,13 +648,15 @@ function Dashboard() {
                 </span>
                 <span>
                   {(() => {
-                    const ph = data.intraday!.session.phase
-                    if (ph === 'closed') return '已收盘 · 全天数据'
+                    const it = data.intraday!
+                    // 行情不是今天 → 无论当前几点，都是「上一交易日全天」口径
+                    if (!it.isToday) return `上一交易日 ${it.asOfDate} · 全天`
+                    const ph = it.session.phase
+                    if (ph === 'closed') return '今日已收盘 · 全天'
+                    if (ph === 'pre') return '今日盘前 · 尚未开盘'
                     const label = ph === 'lunch' ? '午间休市' : ph === 'afternoon' ? '下午盘' : '上午盘'
-                    return `${label} · 进度 ${Math.round((data.intraday!.session.progress ?? 0) * 100)}%`
+                    return `今日${label} · 进度 ${Math.round((it.session.progress ?? 0) * 100)}%`
                   })()}
-                  {' · '}
-                  {data.intraday.asOfDate === todayDate ? '今日' : data.intraday.asOfDate}
                 </span>
               </span>
             }
@@ -670,7 +671,11 @@ function Dashboard() {
                   {data.intraday.totals.multiple === null ? '—' : `${nf(data.intraday.totals.multiple, 2)}×`}
                 </span>
                 <span className="text-meta text-etf-muted">
-                  {data.intraday.session.phase === 'closed' ? '较 20 日全天均额' : '较同时点历史均值'}
+                  {!data.intraday.isToday || data.intraday.session.phase === 'closed'
+                    ? '较 20 日全天均额'
+                    : data.intraday.session.phase === 'pre'
+                      ? '盘前，今日尚无成交'
+                      : '较同时点历史均值'}
                 </span>
               </div>
               <div className="mt-auto pt-2 text-meta leading-4 text-etf-faint">
@@ -696,7 +701,10 @@ function Dashboard() {
                 {data.intraday.totals.baselineYi !== null
                   ? `20 日基准 ${nf(data.intraday.totals.baselineYi, 0)} 亿`
                   : '缺少 20 日均额基准'}
-                {data.intraday.session.phase !== 'closed' && data.intraday.totals.dayRatio !== null
+                {data.intraday.isToday &&
+                  data.intraday.session.phase !== 'closed' &&
+                  data.intraday.session.phase !== 'pre' &&
+                  data.intraday.totals.dayRatio !== null
                   ? ` · 已达成全天日均 ${nf(data.intraday.totals.dayRatio, 2)}×`
                   : ''}
               </div>

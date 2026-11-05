@@ -267,6 +267,7 @@ export interface IntradayAlert {
   session: { ratio: number; phase: string; elapsedMinutes: number; progress: number | null }
   asOfDate: string | null
   shareDate?: string | null
+  isToday?: boolean
   quoteTime: string | null
   totals: {
     amountYi: number
