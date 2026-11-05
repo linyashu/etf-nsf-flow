@@ -188,12 +188,18 @@ function Dashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [countdown, setCountdown] = useState(70)
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
+  // 统计截止日：null = 最新（可能不完整）；指定日期则只用该日及之前的数据
+  const [asOfPick, setAsOfPick] = useState<string | null>(null)
 
-  const load = useCallback(async (force: boolean) => {
+  const load = useCallback(async (force: boolean, asOfOverride?: string | null) => {
     if (force) setRefreshing(true)
     else setLoading(true)
+    const wantAsOf = asOfOverride === undefined ? asOfPick : asOfOverride
     try {
-      const res = await fetch(DATA_URL + (force ? '?refresh=1' : ''), { cache: 'no-store' })
+      const qs = new URLSearchParams()
+      if (force) qs.set('refresh', '1')
+      if (wantAsOf) qs.set('asOf', wantAsOf)
+      const res = await fetch(DATA_URL + (qs.toString() ? `?${qs}` : ''), { cache: 'no-store' })
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(body.error || `HTTP ${res.status}`)
@@ -222,7 +228,7 @@ function Dashboard() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [asOfPick])
 
   useEffect(() => {
     void load(false)
@@ -434,6 +440,35 @@ function Dashboard() {
             onChange={setLookK}
             format={(v) => `${v} 日`}
           />
+          {/* 统计截止日：深市份额常滞后，最新日是「半边数据」。
+              让用户能切到两边都齐的日期，避免把低估当结论。 */}
+          <span aria-hidden className="h-4 w-px bg-etf-line2" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-meta text-etf-faint">截至</span>
+            <select
+              value={asOfPick ?? ''}
+              onChange={(e) => {
+                const v = e.target.value || null
+                setAsOfPick(v)
+                void load(false, v)
+              }}
+              className="rounded-sm border border-etf-line2 bg-etf-layer2 px-1.5 py-0.5 text-meta text-etf-text outline-none transition-colors hover:border-etf-line1"
+              title="选择统计截止日。深市份额滞后时，选一个两边都齐的日期可避免合计低估"
+            >
+              <option value="">
+                最新{fr?.coverage?.lastIsComplete === false ? '（不完整）' : ''}
+              </option>
+              {(fr?.coverage?.days ?? [])
+                .filter((d) => d.complete)
+                .slice(-12)
+                .reverse()
+                .map((d) => (
+                  <option key={d.date} value={d.date}>
+                    {d.date} 完整
+                  </option>
+                ))}
+            </select>
+          </div>
           <span aria-hidden className="h-4 w-px bg-etf-line2" />
           <button
             type="button"
@@ -576,6 +611,19 @@ function Dashboard() {
               合计因而偏低。
               {lag.szMissingGroups?.length ? `受影响指数：${lag.szMissingGroups.join('、')}。` : ''}
             </span>
+            {lag.lastCompleteDate ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const d = lag.lastCompleteDate ?? null
+                  setAsOfPick(d)
+                  void load(false, d)
+                }}
+                className="shrink-0 rounded-sm border border-etf-line2 px-1.5 py-0.5 text-meta leading-4 text-etf-text transition-colors hover:border-etf-line1"
+              >
+                改用 {lag.lastCompleteDate}（完整）
+              </button>
+            ) : null}
           </div>
         ) : null}
 

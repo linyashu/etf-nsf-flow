@@ -62,6 +62,14 @@ export interface Freshness {
   szCount: number
   shareChunks?: number
   note: string | null
+  coverage?: {
+    needSH: number
+    needSZ: number
+    lastCompleteDate: string | null
+    lastDate: string | null
+    lastIsComplete: boolean
+    days: Array<{ date: string; sh: number; sz: number; complete: boolean }>
+  }
   lag?: {
     szLagging: boolean
     latestShareDay: string | null
@@ -71,6 +79,7 @@ export interface Freshness {
     szFundCount: number
     szMissingGroups: string[]
     szScaleShare: number | null
+    lastCompleteDate?: string | null
   }
 }
 
@@ -262,6 +271,14 @@ export interface MarketTemperature {
   asOf: string
   items: TemperatureItem[]
   note: string | null
+  coverage?: {
+    needSH: number
+    needSZ: number
+    lastCompleteDate: string | null
+    lastDate: string | null
+    lastIsComplete: boolean
+    days: Array<{ date: string; sh: number; sz: number; complete: boolean }>
+  }
   lag?: {
     szLagging: boolean
     latestShareDay: string | null
@@ -271,6 +288,7 @@ export interface MarketTemperature {
     szFundCount: number
     szMissingGroups: string[]
     szScaleShare: number | null
+    lastCompleteDate?: string | null
   }
 }
 export interface IntradayRow {

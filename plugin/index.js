@@ -48,7 +48,6 @@ export function apply(ctx, config = {}) {
   }
   const store = storageMode === 'db' ? new Store(dbConfig) : null
 
-  let cache = { at: 0, payload: null, inflight: null }
   // 机构持有比例是季度数据，单独缓存一天，不必跟着日频刷新
   let holderCache = { at: 0, data: null, inflight: null }
 
@@ -157,7 +156,7 @@ export function apply(ctx, config = {}) {
     }
   }
 
-  async function compute(signal) {
+  async function compute(signal, opts = {}) {
     const codes = basketCodes()
     const codeSet = new Set(codes)
 
@@ -181,6 +180,11 @@ export function apply(ctx, config = {}) {
     if (!acquired) acquired = await acquireLive({ codes, codeSet, signal })
 
     const { shares, quotes, benchRows, basics, sseSupplement, latestShareDate, chunks, storage, readMs } = acquired
+
+    // ── 统计截止日选择 ──
+    // 深市份额常滞后 1~2 天，最新日往往是「半边数据」，合计被系统性低估。
+    // 让用户能选一个两边都齐的截止日，比看一个不完整的「最新」更有判断价值。
+    const asOfWant = opts.asOf ? String(opts.asOf).replace(/-/g, '') : null
 
     const names = {}
     for (const b of basics) {
@@ -207,10 +211,35 @@ export function apply(ctx, config = {}) {
     const panel = buildPanel(shares, quotes, benchPct)
     if (!panel.length) throw new Error('未取到任何 ETF 数据，请检查 token 与观察池代码')
 
-    // 限制到最近 lookbackDays 个交易日
-    const allDates = [...new Set(panel.map((r) => r.date))].sort().slice(-lookbackDays)
+    // 限制到最近 lookbackDays 个交易日（asOf 指定时先截断到该日）
+    const panelUpTo = asOfWant ? panel.filter((r) => r.date <= asOfWant) : panel
+    const allDates = [...new Set(panelUpTo.map((r) => r.date))].sort().slice(-lookbackDays)
     const keep = new Set(allDates)
-    const trimmed = panel.filter((r) => keep.has(r.date))
+    const trimmed = panelUpTo.filter((r) => keep.has(r.date))
+
+    // ── 每日完整度 ──
+    // 对每个交易日统计「沪市有数 / 深市有数」，标出最后一个两边都齐的日子。
+    // UI 用它提示用户「当前看的是不完整日」并给出可切换的完整日。
+    const needSH = codeSet.size ? [...codeSet].filter((c) => c.endsWith('.SH')).length : 0
+    const needSZ = codeSet.size ? [...codeSet].filter((c) => c.endsWith('.SZ')).length : 0
+    const dayCoverage = new Map()
+    for (const r of panelUpTo) {
+      if (r.inflow === null) continue
+      const c = dayCoverage.get(r.date) ?? { sh: new Set(), sz: new Set() }
+      if (r.code.endsWith('.SH')) c.sh.add(r.code)
+      else c.sz.add(r.code)
+      dayCoverage.set(r.date, c)
+    }
+    const coverageList = [...dayCoverage.entries()]
+      .map(([d, c]) => ({
+        date: d,
+        sh: c.sh.size,
+        sz: c.sz.size,
+        complete: c.sh.size >= needSH * 0.9 && c.sz.size >= needSZ * 0.9,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+    const lastComplete = [...coverageList].reverse().find((x) => x.complete) ?? null
+    const lastDay = coverageList[coverageList.length - 1] ?? null
 
     const signals = computeSignals(trimmed, 5)
     // 主图右轴要用真实收盘点位，而不是日涨跌幅（评审 P1：日涨跌当指数点位会被误读）
@@ -288,8 +317,11 @@ export function apply(ctx, config = {}) {
     // 「+1,800 亿」当成完整口径 —— 实际可能少了两成以上。
     const szLagDate = fmtDate(dateOf('.SZ'))
     const shLagDate = fmtDate(dateOf('.SH'))
-    const latestShareDay = fmtDate(latestShareDate ?? allDates[allDates.length - 1])
-    const szLagging = szLagDate && latestShareDay && szLagDate < latestShareDay
+    // 必须用「截断后」的日期轴末端判断，不能用 latestShareDate——
+    // 用户把截止日切到 11-03 时，latestShareDate 仍是 11-04，
+    // 会导致明明两边都齐还报「口径不完整」。
+    const latestShareDay = fmtDate(allDates[allDates.length - 1])
+    const szLagging = Boolean(szLagDate && latestShareDay && szLagDate < latestShareDay)
 
     // 缺口日的深市份额变化无法得知，**不能靠外推猜一个数**——那会造假数据。
     // 改为报告可验证的事实：受影响标的的规模占比。占比越大，低估越显著。
@@ -311,7 +343,8 @@ export function apply(ctx, config = {}) {
       generatedAt: new Date().toISOString(),
       asOf: signals.asOf,
       freshness: {
-        shareDate: fmtDate(latestShareDate ?? allDates[allDates.length - 1]),
+        // 当前所看数据的截止日（受 asOf 影响），不是库里最新日
+        shareDate: fmtDate(allDates[allDates.length - 1]),
         quoteDate: latestQuote ? fmtDate(latestQuote) : null,
         shDate: fmtDate(dateOf('.SH')),
         szDate: fmtDate(dateOf('.SZ')),
@@ -325,6 +358,20 @@ export function apply(ctx, config = {}) {
         note: sseSupplement
           ? `沪市已补至 ${sseSupplement.date}（${sseSupplement.funds} 只），深市仍为上一交易日`
           : null,
+        // 每日完整度与「最后一个两边都齐的日子」，供用户切换截止日
+        coverage: {
+          needSH,
+          needSZ,
+          lastCompleteDate: lastComplete ? fmtDate(lastComplete.date) : null,
+          lastDate: lastDay ? fmtDate(lastDay.date) : null,
+          lastIsComplete: Boolean(lastDay?.complete),
+          days: coverageList.slice(-30).map((x) => ({
+            date: fmtDate(x.date),
+            sh: x.sh,
+            sz: x.sz,
+            complete: x.complete,
+          })),
+        },
         // 缺口标记：UI 用它决定是否显示「口径不完整」提示
         lag: {
           szLagging: Boolean(szLagging),
@@ -336,6 +383,7 @@ export function apply(ctx, config = {}) {
           szMissingGroups,
           // 受影响标的占总规模的比例（%）。这是可验证的事实，不是外推估算
           szScaleShare,
+          lastCompleteDate: lastComplete ? fmtDate(lastComplete.date) : null,
         },
       },
       universe: UNIVERSE,
@@ -381,22 +429,29 @@ export function apply(ctx, config = {}) {
     return holderCache.inflight
   }
 
-  async function getData({ force = false, signal } = {}) {
-    const fresh = cache.payload && Date.now() - cache.at < cacheMs
-    if (fresh && !force) return cache.payload
-    if (cache.inflight) return cache.inflight
+  // 缓存按 asOf 分桶：不同截止日的数据必须分开缓存，
+  // 否则用户切回已看过的日期会命中另一天的缓存，数字莫名跳变。
+  const payloadCache = new Map()
 
-    cache.inflight = (async () => {
+  async function getData({ force = false, signal, asOf = null } = {}) {
+    const key = asOf || '__latest__'
+    const hit = payloadCache.get(key)
+    if (hit && Date.now() - hit.at < cacheMs && !force) return hit.payload
+    if (hit?.inflight) return hit.inflight
+
+    const entry = { at: 0, payload: null, inflight: null }
+    entry.inflight = (async () => {
       try {
-        const payload = await compute(signal)
-        cache = { at: Date.now(), payload, inflight: null }
+        const payload = await compute(signal, { asOf })
+        payloadCache.set(key, { at: Date.now(), payload, inflight: null })
         return payload
       } catch (err) {
-        cache.inflight = null
+        payloadCache.delete(key)
         throw err
       }
     })()
-    return cache.inflight
+    payloadCache.set(key, entry)
+    return entry.inflight
   }
 
   // ---- HTTP 路由：前端拉取数据 ----
@@ -408,7 +463,8 @@ export function apply(ctx, config = {}) {
         try {
           const url = new URL(req.url || '/', 'http://localhost')
           const force = url.searchParams.get('refresh') === '1'
-          const payload = await getData({ force })
+          const asOf = url.searchParams.get('asOf')
+          const payload = await getData({ force, asOf })
           const body = JSON.stringify(payload)
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',

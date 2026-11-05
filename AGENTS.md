@@ -402,6 +402,33 @@ IOPV 来自腾讯行情字段 `[78]`（实测 510300 价格 4.175 vs IOPV 4.1728
   只报告可验证的事实：受影响标的的规模占比、受影响的纯深市组名单
 - `szScaleShare` 用「深市标的市值 ÷ 全部标的市值」，规模比只数更能代表影响程度
 
+### 统计截止日（asOf）—— 绕开不完整最新日
+
+既然最新日可能只有半边数据，就让用户能选一个**两边都齐**的截止日。
+这比「只看最新」更有判断价值：一个完整但晚一天的数，胜过不完整但当天。
+
+- 后端：`GET /etf-flow/data.json?asOf=2026-11-03`，在 `buildPanel` 之后按日期截断
+- 前端：页头「截至」下拉，选项来自 `freshness.coverage.days`（只列 complete 的日期）
+- 判词卡的缺口提示里直接给按钮「改用 2026-11-03（完整）」，一键切换
+
+`freshness.coverage` 结构：
+
+```
+needSH / needSZ        观察池里沪深各多少只
+lastCompleteDate       最后一个两边都齐的日期 ← 关键字段
+lastDate / lastIsComplete   最新日及其是否完整
+days[]                 近 30 日逐日的 sh/sz 只数与 complete 标记
+```
+
+**两个实现陷阱（都踩过）**：
+
+1. `szLagging` 必须用**截断后**日期轴的末端判断，不能用 `latestShareDate`。
+   否则用户切到 11-03 时，latestShareDate 仍是 11-04，明明两边都齐还报「口径不完整」。
+2. `freshness.shareDate` 同理要跟随 asOf，否则标题写着 11-03、shareDate 却是 11-04。
+
+**缓存必须按 asOf 分桶**（`payloadCache` Map），不能共用一份——
+否则用户切回看过的日期会命中另一天的缓存，数字莫名跳变。
+
 ## 标的覆盖要与主流口径对齐
 
 对标东财 Choice 宽基分类后补齐（52→66 只，37→41 组）：
