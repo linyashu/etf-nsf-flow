@@ -68,6 +68,9 @@ export interface Freshness {
     lastCompleteDate: string | null
     lastDate: string | null
     lastIsComplete: boolean
+    pickedIsComplete?: boolean
+    pickedBy?: string
+    isDefaultComplete?: boolean
     days: Array<{ date: string; sh: number; sz: number; complete: boolean }>
   }
   lag?: {
@@ -277,6 +280,9 @@ export interface MarketTemperature {
     lastCompleteDate: string | null
     lastDate: string | null
     lastIsComplete: boolean
+    pickedIsComplete?: boolean
+    pickedBy?: string
+    isDefaultComplete?: boolean
     days: Array<{ date: string; sh: number; sz: number; complete: boolean }>
   }
   lag?: {

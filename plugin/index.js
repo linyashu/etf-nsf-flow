@@ -184,7 +184,31 @@ export function apply(ctx, config = {}) {
     // ── 统计截止日选择 ──
     // 深市份额常滞后 1~2 天，最新日往往是「半边数据」，合计被系统性低估。
     // 让用户能选一个两边都齐的截止日，比看一个不完整的「最新」更有判断价值。
-    const asOfWant = opts.asOf ? String(opts.asOf).replace(/-/g, '') : null
+    const rawAsOf = opts.asOf ? String(opts.asOf).trim() : null
+    // 'latest' 是保留字，强制看最新（哪怕不完整）；其余必须是可解析的日期。
+    // 非法值必须报错，不能静默退回默认——否则用户以为切了日期，
+    // 实际看的是另一天，这比直接报错危险得多。
+    let asOfWant = null
+    if (rawAsOf) {
+      if (/^latest$/i.test(rawAsOf)) {
+        asOfWant = 'latest'
+      } else {
+        const digits = rawAsOf.replace(/-/g, '').replace(/[^0-9]/g, '')
+        if (!/^\d{8}$/.test(digits)) {
+          throw new Error(`asOf 参数无效：${rawAsOf}（应为 latest 或 2026-11-03）`)
+        }
+        // 8 位数字不代表是真实日期：20261399 / 20260230 都能过正则。
+        // 用 Date 往返校验能挡住所有不存在的日期（含闰年）。
+        const y = Number(digits.slice(0, 4))
+        const mo = Number(digits.slice(4, 6))
+        const d = Number(digits.slice(6, 8))
+        const probe = new Date(Date.UTC(y, mo - 1, d))
+        if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d) {
+          throw new Error(`asOf 不是有效日期：${rawAsOf}`)
+        }
+        asOfWant = digits
+      }
+    }
 
     const names = {}
     for (const b of basics) {
@@ -211,19 +235,13 @@ export function apply(ctx, config = {}) {
     const panel = buildPanel(shares, quotes, benchPct)
     if (!panel.length) throw new Error('未取到任何 ETF 数据，请检查 token 与观察池代码')
 
-    // 限制到最近 lookbackDays 个交易日（asOf 指定时先截断到该日）
-    const panelUpTo = asOfWant ? panel.filter((r) => r.date <= asOfWant) : panel
-    const allDates = [...new Set(panelUpTo.map((r) => r.date))].sort().slice(-lookbackDays)
-    const keep = new Set(allDates)
-    const trimmed = panelUpTo.filter((r) => keep.has(r.date))
-
-    // ── 每日完整度 ──
-    // 对每个交易日统计「沪市有数 / 深市有数」，标出最后一个两边都齐的日子。
-    // UI 用它提示用户「当前看的是不完整日」并给出可切换的完整日。
+    // ── 每日完整度（必须在截断之前算）──
+    // 顺序很关键：完整度要基于【全量 panel】计算，才能知道「最后一个完整日」是哪天；
+    // 而截断又要用这个结果来决定默认 asOf。先算全量 → 定 asOf → 再截断。
     const needSH = codeSet.size ? [...codeSet].filter((c) => c.endsWith('.SH')).length : 0
     const needSZ = codeSet.size ? [...codeSet].filter((c) => c.endsWith('.SZ')).length : 0
     const dayCoverage = new Map()
-    for (const r of panelUpTo) {
+    for (const r of panel) {
       if (r.inflow === null) continue
       const c = dayCoverage.get(r.date) ?? { sh: new Set(), sz: new Set() }
       if (r.code.endsWith('.SH')) c.sh.add(r.code)
@@ -240,6 +258,24 @@ export function apply(ctx, config = {}) {
       .sort((a, b) => a.date.localeCompare(b.date))
     const lastComplete = [...coverageList].reverse().find((x) => x.complete) ?? null
     const lastDay = coverageList[coverageList.length - 1] ?? null
+
+    // ── 默认截止日 ──
+    // 默认用最后一个「沪深都齐」的交易日。理由：不完整最新日会让合计低估 30%+，
+    // 打开就看到可信的数 比 追赶当天更重要。用户仍可手动切到最新。
+    //   asOf = 'latest' → 强制最新（哪怕不完整）
+    //   asOf = '2026-11-03' → 指定日期
+    //   asOf 缺省 → 最后完整日
+    const wantLatest = asOfWant === 'latest'
+    const asOfPick = wantLatest
+      ? (lastDay?.date ?? null)
+      : (asOfWant || lastComplete?.date || lastDay?.date || null)
+    const isDefaultComplete = !wantLatest && !asOfWant
+
+    // 限制到最近 lookbackDays 个交易日（截断到 asOfPick）
+    const panelUpTo = asOfPick ? panel.filter((r) => r.date <= asOfPick) : panel
+    const allDates = [...new Set(panelUpTo.map((r) => r.date))].sort().slice(-lookbackDays)
+    const keep = new Set(allDates)
+    const trimmed = panelUpTo.filter((r) => keep.has(r.date))
 
     const signals = computeSignals(trimmed, 5)
     // 主图右轴要用真实收盘点位，而不是日涨跌幅（评审 P1：日涨跌当指数点位会被误读）
@@ -362,9 +398,18 @@ export function apply(ctx, config = {}) {
         coverage: {
           needSH,
           needSZ,
+          // 当前截止日的来源：default-complete（默认完整日）/ latest（强制最新）/ explicit（用户指定）
+          pickedBy: isDefaultComplete ? 'default-complete' : wantLatest ? 'latest' : 'explicit',
+          isDefaultComplete,
           lastCompleteDate: lastComplete ? fmtDate(lastComplete.date) : null,
           lastDate: lastDay ? fmtDate(lastDay.date) : null,
+          // lastIsComplete 指「库里最新那一天」是否完整（与用户所选无关）。
+          // 当前所看那天是否完整用 pickedIsComplete，两者语义不同，别混用。
           lastIsComplete: Boolean(lastDay?.complete),
+          pickedIsComplete: Boolean(
+            coverageList.find((x) => x.date === asOfPick)?.complete ??
+              (asOfPick ? false : Boolean(lastComplete)),
+          ),
           days: coverageList.slice(-30).map((x) => ({
             date: fmtDate(x.date),
             sh: x.sh,

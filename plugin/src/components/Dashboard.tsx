@@ -453,13 +453,19 @@ function Dashboard() {
                 void load(false, v)
               }}
               className="rounded-sm border border-etf-line2 bg-etf-layer2 px-1.5 py-0.5 text-meta text-etf-text outline-none transition-colors hover:border-etf-line1"
-              title="选择统计截止日。深市份额滞后时，选一个两边都齐的日期可避免合计低估"
+              title="选择统计截止日。默认取最后一个沪深都齐的交易日；也可手动切到最新（可能不完整）"
             >
+              {/* 默认：最后一个两边都齐的交易日（空值让后端自己算，避免前端猜错） */}
               <option value="">
-                最新{fr?.coverage?.lastIsComplete === false ? '（不完整）' : ''}
+                完整日{fr?.coverage?.lastCompleteDate ? ` ${fr.coverage.lastCompleteDate}` : ''}
+                {fr?.coverage?.pickedIsComplete ? '' : '（当前不完整）'}
               </option>
+              {/* 手动切到最新：如果最新日本身完整，不必重复出现 */}
+              {fr?.coverage?.lastIsComplete === false && fr?.coverage?.lastDate ? (
+                <option value="latest">{`最新 ${fr.coverage.lastDate}（不完整）`}</option>
+              ) : null}
               {(fr?.coverage?.days ?? [])
-                .filter((d) => d.complete)
+                .filter((d) => d.complete && d.date !== fr?.coverage?.lastCompleteDate)
                 .slice(-12)
                 .reverse()
                 .map((d) => (
@@ -611,19 +617,17 @@ function Dashboard() {
               合计因而偏低。
               {lag.szMissingGroups?.length ? `受影响指数：${lag.szMissingGroups.join('、')}。` : ''}
             </span>
-            {lag.lastCompleteDate ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const d = lag.lastCompleteDate ?? null
-                  setAsOfPick(d)
-                  void load(false, d)
-                }}
-                className="shrink-0 rounded-sm border border-etf-line2 px-1.5 py-0.5 text-meta leading-4 text-etf-text transition-colors hover:border-etf-line1"
-              >
-                改用 {lag.lastCompleteDate}（完整）
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                // 回到默认：清空选择，由后端取最后一个完整日
+                setAsOfPick(null)
+                void load(false, null)
+              }}
+              className="shrink-0 rounded-sm border border-etf-line2 px-1.5 py-0.5 text-meta leading-4 text-etf-text transition-colors hover:border-etf-line1"
+            >
+              回到完整日{lag.lastCompleteDate ? ` ${lag.lastCompleteDate}` : ''}
+            </button>
           </div>
         ) : null}
 
