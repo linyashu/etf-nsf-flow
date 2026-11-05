@@ -184,6 +184,10 @@ function Dashboard() {
   const [showAll, setShowAll] = useState(false)
   const [query, setQuery] = useState('')
   const [sectorFilter, setSectorFilter] = useState<string>('all')
+  // 盘中自动刷新：只在交易时段生效，其余时刻无意义（份额是 T+1，日线收盘后才变）
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [countdown, setCountdown] = useState(70)
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null)
 
   const load = useCallback(async (force: boolean) => {
     if (force) setRefreshing(true)
@@ -202,6 +206,7 @@ function Dashboard() {
       setData(json)
       setErr(null)
       setStaleNote(null)
+      setLastLoadedAt(new Date())
     } catch (e) {
       const msg = String((e as Error)?.message ?? e)
       // 刷新失败时保留旧数据，并明确告诉用户「这是旧数据」
@@ -222,6 +227,36 @@ function Dashboard() {
   useEffect(() => {
     void load(false)
   }, [load])
+
+  // ── 盘中自动刷新 ──
+  // 只在交易时段（9:30–11:30 / 13:00–15:00）跑：非交易时段数据不会变，
+  // 定时刷新只是白耗请求。停盘自动休眠，开盘自动恢复。
+  useEffect(() => {
+    if (!autoRefresh) return
+    const INTERVAL = 70
+    let left = INTERVAL
+
+    const tick = setInterval(() => {
+      const now = new Date()
+      const t = now.getHours() * 60 + now.getMinutes()
+      const inSession =
+        now.getDay() >= 1 &&
+        now.getDay() <= 5 &&
+        ((t >= 9 * 60 + 30 && t <= 11 * 60 + 30) || (t >= 13 * 60 && t <= 15 * 60))
+      if (!inSession) {
+        setCountdown(INTERVAL)
+        return
+      }
+      left -= 1
+      if (left <= 0) {
+        left = INTERVAL
+        void load(true)
+      }
+      setCountdown(left)
+    }, 1000)
+
+    return () => clearInterval(tick)
+  }, [autoRefresh, load])
 
   const s = data?.signals
 
@@ -330,6 +365,7 @@ function Dashboard() {
   // 归一化必须与显示范围一致：原先用全部 13 个板块取 max，导致前 8 项的条形普遍很短
   const momMax = Math.max(...momRows.map((m) => Math.abs(m.delta)), 1)
   const szLag = Boolean(fr?.shDate && fr?.szDate && fr.szDate < fr.shDate)
+  const lag = fr?.lag
   // 证据链同样必须跟随窗口。服务端只按 lookback=5 预算，切窗口后不能沿用。
   const en = s.enhancement
   const winPersistence = (() => {
@@ -528,6 +564,21 @@ function Dashboard() {
           </div>
         )}
 
+        {lag?.szLagging ? (
+          <div className="mt-4 flex flex-wrap items-start gap-x-2 gap-y-1 rounded-lg border border-etf-line2 bg-etf-layer2/60 px-3 py-2 text-meta leading-5">
+            <span className="shrink-0 font-medium text-etf-text">口径不完整</span>
+            <span className="text-etf-muted">
+              深市份额最新
+              <span className="mx-1 font-etf-mono tabular-nums text-etf-text">{lag.szDate}</span>
+              滞后于沪市
+              <span className="mx-1 font-etf-mono tabular-nums text-etf-text">{lag.shDate}</span>
+              ，{lag.szFundCount} 只深市标的（占总规模 {nf(lag.szScaleShare ?? 0, 1)}%）当日按 0 计入，
+              合计因而偏低。
+              {lag.szMissingGroups?.length ? `受影响指数：${lag.szMissingGroups.join('、')}。` : ''}
+            </span>
+          </div>
+        ) : null}
+
         <div className="mt-4 border-t border-etf-line1 pt-3 text-meta text-etf-faint">
           集中度 Top3 占正流入 {nf(windowConcentration.ratio * 100, 0)}%（近 {lookK} 日）
           {windowConcentration.top3.length
@@ -657,6 +708,31 @@ function Dashboard() {
                     const label = ph === 'lunch' ? '午间休市' : ph === 'afternoon' ? '下午盘' : '上午盘'
                     return `今日${label} · 进度 ${Math.round((it.session.progress ?? 0) * 100)}%`
                   })()}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void load(true)}
+                    disabled={refreshing}
+                    className="rounded-sm border border-etf-line2 px-1.5 py-0.5 text-meta leading-4 text-etf-muted transition-colors hover:border-etf-line1 hover:text-etf-text disabled:opacity-50"
+                  >
+                    {refreshing ? '刷新中' : '立即刷新'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAutoRefresh((v) => !v)}
+                    className="rounded-sm border border-etf-line2 px-1.5 py-0.5 text-meta leading-4 text-etf-muted transition-colors hover:border-etf-line1 hover:text-etf-text"
+                    title="仅在交易时段自动刷新（70 秒）"
+                  >
+                    {autoRefresh ? `自动 ${countdown}s` : '已暂停'}
+                  </button>
+                  {lastLoadedAt ? (
+                    <span className="font-etf-mono text-meta tabular-nums text-etf-faint">
+                      {String(lastLoadedAt.getHours()).padStart(2, '0')}:
+                      {String(lastLoadedAt.getMinutes()).padStart(2, '0')}:
+                      {String(lastLoadedAt.getSeconds()).padStart(2, '0')}
+                    </span>
+                  ) : null}
                 </span>
               </span>
             }

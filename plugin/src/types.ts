@@ -62,6 +62,16 @@ export interface Freshness {
   szCount: number
   shareChunks?: number
   note: string | null
+  lag?: {
+    szLagging: boolean
+    latestShareDay: string | null
+    shDate: string | null
+    szDate: string | null
+    missingDays: number | null
+    szFundCount: number
+    szMissingGroups: string[]
+    szScaleShare: number | null
+  }
 }
 
 export interface UniverseEntry {
@@ -251,6 +261,16 @@ export interface MarketTemperature {
   asOf: string
   items: TemperatureItem[]
   note: string | null
+  lag?: {
+    szLagging: boolean
+    latestShareDay: string | null
+    shDate: string | null
+    szDate: string | null
+    missingDays: number | null
+    szFundCount: number
+    szMissingGroups: string[]
+    szScaleShare: number | null
+  }
 }
 export interface IntradayRow {
   code: string

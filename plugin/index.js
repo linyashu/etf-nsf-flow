@@ -279,6 +279,32 @@ export function apply(ctx, config = {}) {
     const szCount = funds.length - shCount
     const latestQuote = quotes.length ? [...new Set(quotes.map((q) => q.trade_date))].sort().pop() : null
 
+    // ── 缺口量化 ──
+    // 沪深披露节奏不同：深市份额通常滞后 1~2 个交易日。
+    // 缺口日的深市标的按 0 计入（保证「合计=各基金之和」成立），
+    // 但这会让合计**系统性低估**。必须把低估幅度算出来，否则用户会把
+    // 「+1,800 亿」当成完整口径 —— 实际可能少了两成以上。
+    const szLagDate = fmtDate(dateOf('.SZ'))
+    const shLagDate = fmtDate(dateOf('.SH'))
+    const latestShareDay = fmtDate(latestShareDate ?? allDates[allDates.length - 1])
+    const szLagging = szLagDate && latestShareDay && szLagDate < latestShareDay
+
+    // 缺口日的深市份额变化无法得知，**不能靠外推猜一个数**——那会造假数据。
+    // 改为报告可验证的事实：受影响标的的规模占比。占比越大，低估越显著。
+    let szMissingGroups = []
+    let szScaleShare = null
+    if (szLagging) {
+      const szFunds = funds.filter((f) => f.code.endsWith('.SZ'))
+      const totalScale = funds.reduce((a, f) => a + (f.share * f.close) / 1e4, 0)
+      const szScale = szFunds.reduce((a, f) => a + (f.share * f.close) / 1e4, 0)
+      szScaleShare = totalScale > 0 ? Math.round((szScale / totalScale) * 1000) / 10 : null
+      // 纯深市组（全部标的都在深市）受影响最彻底；混合组只是部分标的缺
+      szMissingGroups = signals.groups
+        .filter((g) => g.codes.every((c) => c.endsWith('.SZ')))
+        .map((g) => g.group)
+        .sort()
+    }
+
     return {
       generatedAt: new Date().toISOString(),
       asOf: signals.asOf,
@@ -297,6 +323,18 @@ export function apply(ctx, config = {}) {
         note: sseSupplement
           ? `沪市已补至 ${sseSupplement.date}（${sseSupplement.funds} 只），深市仍为上一交易日`
           : null,
+        // 缺口标记：UI 用它决定是否显示「口径不完整」提示
+        lag: {
+          szLagging: Boolean(szLagging),
+          latestShareDay,
+          shDate: shLagDate,
+          szDate: szLagDate,
+          missingDays: null,
+          szFundCount: szCount,
+          szMissingGroups,
+          // 受影响标的占总规模的比例（%）。这是可验证的事实，不是外推估算
+          szScaleShare,
+        },
       },
       universe: UNIVERSE,
       coverage: {
