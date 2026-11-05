@@ -135,6 +135,7 @@ export interface Holders {
 }
 
 export interface Heatmap {
+  groupsAll?: string[]
   dates: string[]
   groups: string[]
   cells: HeatCell[]

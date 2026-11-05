@@ -263,7 +263,9 @@ export function apply(ctx, config = {}) {
     const fSeries = fundSeries(trimmed, Math.min(lookbackDays, 120))
     const momentum = sectorMomentum(trimmed, 5)
     const managers = managerView(trimmed, names, 30)
-    const heat = heatmap(trimmed, { days: 20, topGroups: 11 })
+    // 热力表：返回「按绝对值排序的前 N 组」+ 全部宽基组，前端可展开到全量。
+    // topGroups 用 13 而不是 11 —— 正好覆盖全部宽基指数，多出的列前端默认折叠。
+    const heat = heatmap(trimmed, { days: 20, topGroups: 18 })
 
     const benchSeries = allDates.map((d) => ({
       date: fmtDate(d),

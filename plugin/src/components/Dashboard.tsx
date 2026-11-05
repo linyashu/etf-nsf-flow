@@ -606,7 +606,19 @@ function Dashboard() {
       {/* 主图 + 资金流向 */}
       <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[2.5fr_1fr]">
         <Card>
-          <Head title="累计净申购与沪深300" meta="左轴 亿元 · 右轴 点 · 柱 当日净申购" />
+          <Head
+            title="累计净申购与沪深300"
+            meta={
+              <span>
+                左轴 亿元 · 右轴 点 · 柱 当日净申购 ·
+                <span className="ml-1 inline-flex items-center gap-1 align-middle">
+                  <span className="inline-block h-2 w-1.5 bg-etf-in opacity-40" />
+                  <span className="inline-block h-2 w-1.5 bg-etf-in opacity-90" />
+                  加重 = 单日 |净流入| ≥ 100 亿
+                </span>
+              </span>
+            }
+          />
           <FlowChart series={flowSeries} anomalies={s.anomalies} />
         </Card>
 

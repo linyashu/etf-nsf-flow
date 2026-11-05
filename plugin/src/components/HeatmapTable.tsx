@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Heatmap } from '../types'
 import { nf, signed } from '../format'
 
@@ -22,7 +23,19 @@ export function HeatmapTable({ data }: Props) {
     return <div className="grid h-[200px] place-items-center text-meta text-etf-muted">暂无数据</div>
   }
 
-  const { dates, groups, cells, max } = data
+  const { dates, cells, max, groupsAll } = data
+  // 默认只显示前 DEFAULT_COLS 组，避免列过多挤成一片；
+  // 展开后显示 payload 里的全部组（后端按窗口内绝对值降序返回）。
+  const [expanded, setExpanded] = useState(false)
+  // 默认展示列数 = 后端返回的 groups 数量（已按窗口内绝对值排序，topGroups=18），
+  // 展开时才用 groupsAll 的全量 41 组。不要在前端再截一次——那会让
+  // 「后端算好的 18 列」和「前端显示的 11 列」不一致，小计也跟着错。
+  const DEFAULT_COLS = data.groups.length
+  const allGroups = expanded && groupsAll?.length ? groupsAll : data.groups
+  const showCount = expanded ? allGroups.length : Math.min(DEFAULT_COLS, allGroups.length)
+  const groups = allGroups.slice(0, showCount)
+  // 需要按裁剪后的列重建 cells 的 values，否则列与值会错位
+  const colIdx = groups.map((g) => data.groups.indexOf(g))
   const denom = max || 1
   // 有缺失格时表头要说明，否则读者会把留空当成 0
   const hasMissing = cells.some((row) => (row.missing ?? 0) > 0)
@@ -63,7 +76,8 @@ export function HeatmapTable({ data }: Props) {
           {cells.map((row) => (
             <tr key={row.date} className="border-b border-etf-line1">
               <td className="py-1 pr-3 font-etf-mono text-meta tabular-nums text-etf-muted">{row.date}</td>
-              {row.values.map((v, i) => {
+              {colIdx.map((oi, i) => {
+                const v = oi >= 0 ? row.values[oi] : null
                 if (v === null) {
                   return (
                     <td
@@ -96,7 +110,13 @@ export function HeatmapTable({ data }: Props) {
                 )
               })}
               <td className="py-1 pl-3 text-right font-etf-mono text-meta font-medium tabular-nums text-etf-text">
-                {row.total === null ? '—' : signed(row.total, 1)}
+                {(() => {
+                  // 小计必须与当前显示的列一致：展开后若仍用后端全量 total，
+                  // 读者会拿 18 个格子的值去对一个只含 11 列的合计数，必然对不上。
+                  const shown = colIdx.map((oi) => (oi >= 0 ? row.values[oi] : null)).filter((v) => v !== null) as number[]
+                  if (!shown.length) return '—'
+                  return signed(shown.reduce((a, b) => a + b, 0), 1)
+                })()}
               </td>
             </tr>
           ))}
@@ -105,6 +125,15 @@ export function HeatmapTable({ data }: Props) {
       <div className="mt-3 flex flex-wrap items-center gap-4 text-meta text-etf-faint">
         <span>近 {dates.length} 个交易日 · 单位亿元</span>
         <span>小计仅含本表 {groups.length} 个指数</span>
+        {(groupsAll?.length ?? 0) > DEFAULT_COLS ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="rounded-sm border border-etf-line2 px-1.5 py-0.5 text-meta leading-4 text-etf-muted transition-colors hover:border-etf-line1 hover:text-etf-text"
+          >
+            {expanded ? '收起' : `展开全部 ${groupsAll!.length} 个指数`}
+          </button>
+        ) : null}
         {hasMissing && <span>「—」为当日份额尚未披露（深市 T+1），非零流入</span>}
         <span className="inline-flex items-center gap-2">
           <i

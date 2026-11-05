@@ -730,7 +730,15 @@ export function heatmap(panel, { days = 20, topGroups = 10 } = {}) {
     cells.push({ date: ymd(d), values: row, total, missing: row.length - present.length })
   }
 
-  return { dates: dates.map(ymd), groups, cells: cells.reverse(), max: round(max, 2) }
+  return {
+    dates: dates.map(ymd),
+    groups,
+    // 未截断的完整分组名单（按窗口内绝对值降序），供前端「展开全部」使用。
+    // 前端只展示前 groups.length 个时行为与旧版完全一致。
+    groupsAll: [...totalByGroup.entries()].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([g]) => g),
+    cells: cells.reverse(),
+    max: round(max, 2),
+  }
 }
 
 function round(v, d = 2) {

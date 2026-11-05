@@ -12,6 +12,9 @@ interface Props {
 const IN = 'var(--dsw-alias-state-error-primary)'
 const OUT = 'var(--dsw-alias-state-success-primary)'
 const GRID = 'var(--dsw-alias-border-l1)'
+/** 放量日阈值（亿元）：单日净申购绝对值超过此值即视为异动。 */
+const SURGE_YI = 100
+
 const MUTED = 'var(--dsw-alias-label-secondary)'
 const FAINT = 'var(--dsw-alias-label-tertiary)'
 const SURFACE = 'var(--dsw-alias-bg-layer-1)'
@@ -111,7 +114,8 @@ export function FlowChart({ series, anomalies = [], height = 320 }: Props) {
     : null
 
   const last = series[series.length - 1]
-  const ariaLabel = `累计净申购走势：从 ${series[0].date} 到 ${last.date}，累计 ${nf(last.cum, 0)} 亿元，最新单日 ${signed(last.inflow, 0)} 亿元`
+  const surgeDays = series.filter((d) => Math.abs(d.inflow) >= SURGE_YI).length
+  const ariaLabel = `累计净申购走势：从 ${series[0].date} 到 ${last.date}，累计 ${nf(last.cum, 0)} 亿元，最新单日 ${signed(last.inflow, 0)} 亿元，其中 ${surgeDays} 天单日净流入超过 ${SURGE_YI} 亿`
 
   return (
     <div ref={wrapRef} className="relative">
@@ -164,20 +168,29 @@ export function FlowChart({ series, anomalies = [], height = 320 }: Props) {
           沪深300 点
         </text>
 
-        {/* 当日净申购柱 */}
+        {/* 当日净申购柱。放量日（|净流入| > 100 亿）加重：颜色更深 + 描边 + 抬高，
+            让「异动时刻」在 119 根柱子里一眼可辨，不必逐个读数字。 */}
         {series.map((d, i) => {
           const bh = (Math.abs(d.inflow) / barMax) * (gh * 0.26)
           const up = d.inflow >= 0
+          const heavy = Math.abs(d.inflow) >= SURGE_YI
+          const bw = Math.max(2, (cw / series.length) * (heavy ? 0.62 : 0.5))
           return (
             <rect
               key={`bar${i}`}
-              x={x(i) - Math.max(2, (cw / series.length) * 0.25)}
+              x={x(i) - bw / 2}
               y={up ? zeroY - bh : zeroY}
-              width={Math.max(2, (cw / series.length) * 0.5)}
+              width={bw}
               height={Math.max(bh, 1)}
               fill={up ? IN : OUT}
-              opacity={0.42}
-            />
+              opacity={heavy ? 0.85 : 0.36}
+              stroke={heavy ? (up ? IN : OUT) : 'none'}
+              strokeWidth={heavy ? 0.8 : 0}
+            >
+              <title>
+                {`${d.date} ${signed(d.inflow, 0)} 亿${heavy ? ' · 放量日' : ''}`}
+              </title>
+            </rect>
           )
         })}
 
