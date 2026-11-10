@@ -325,5 +325,6 @@ export interface IntradayAlert {
   }
   top: IntradayRow[]
   rows: IntradayRow[]
+  minuteSeries?: Array<{ time: string; pct: number | null }> | null
   warn: { amount: string; netActive: string; predictable: string; premium?: string }
 }

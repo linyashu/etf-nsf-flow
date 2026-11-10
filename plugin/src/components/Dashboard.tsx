@@ -6,6 +6,7 @@ import { FlowChart } from './FlowChart'
 import { FundChart } from './FundChart'
 import { Gauge } from './Gauge'
 import { HeatmapTable } from './HeatmapTable'
+import { MinuteChart } from './MinuteChart'
 
 const DATA_URL = '/etf-flow/data.json'
 
@@ -892,6 +893,17 @@ function Dashboard() {
               </div>
             </div>
           </div>
+
+          {/* 当日分时：判断「什么时候放的量」，上午单边流入与尾盘突击含义完全不同 */}
+          {data.intraday.minuteSeries && data.intraday.minuteSeries.length > 1 ? (
+            <div className="mt-4 border-t border-etf-line1 pt-3">
+              <div className="mb-1 flex items-baseline justify-between text-meta text-etf-faint">
+                <span>成交额 Top 8 加权分时</span>
+                <span className="text-etf-muted">虚线 = 当日开盘价</span>
+              </div>
+              <MinuteChart series={data.intraday.minuteSeries} />
+            </div>
+          ) : null}
 
           {/* Top 放量标的：列标签必须在数据上方 */}
           <div className="mt-4">

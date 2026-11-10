@@ -162,7 +162,7 @@ export async function fetchQuotes(codes, { signal } = {}) {
  * @param {Map}   dailyAvg       各代码近 20 日日均成交额（亿元）
  * @param {object} opts
  */
-export function buildIntraday(quotes, dailyAvg, { now = new Date(), asOfDate = null } = {}) {
+export function buildIntraday(quotes, dailyAvg, { now = new Date(), asOfDate = null, minuteSeries = null } = {}) {
   if (!quotes?.size) return null
   const session = sessionProgress(now)
 
@@ -233,6 +233,8 @@ export function buildIntraday(quotes, dailyAvg, { now = new Date(), asOfDate = n
     },
     top: rows.slice(0, 8),
     rows,
+    // 当日分时（池级成交额加权价）。只有非空时才画图，避免空数组占位
+    minuteSeries: minuteSeries && minuteSeries.length > 1 ? minuteSeries : null,
     warn: {
       amount: '成交量是换手，任何人都贡献；宽基 ETF 一二级套利会产生反向成交，稀释信号。',
       netActive: '主动净买入由外盘/内盘推算，是逐笔成交方向，不是资金净流入、也不是基金申赎。',
@@ -246,6 +248,106 @@ function round(v, n) {
   if (v === null || !Number.isFinite(v)) return null
   const f = 10 ** n
   return Math.round(v * f) / f
+}
+
+/**
+ * 腾讯分钟 K 线 —— 当日分时曲线。
+ *
+ * 为什么需要：腾讯行情快照只给「当前这一刻」的累计量，画不出曲线。
+ * 而分时是判断「什么时候放的量」的唯一手段：
+ * 上午单边流入 vs 尾盘突击，含义完全不同。
+ *
+ * 接口限制（实测）：
+ *   - 最多 320 根。1 分钟粒度正好覆盖一个交易日（240 分钟）
+ *   - 只有最近的数据，不提供历史（要历史得自己按日落库）
+ *   - 科创板成交量单位是股、其余是手（本模块只用价格，不受影响）
+ *
+ * 返回的 points 已按时间升序，且只保留当日（与行情快照同一天）。
+ */
+const MINUTE_HOST = 'https://ifzq.gtimg.cn'
+
+/** 拉单只标的的分钟 K 线。失败返回空数组，不影响主流程。 */
+export async function fetchMinuteKline(code, { period = 'm1', count = 320, signal } = {}) {
+  const symbol = toQQ(code)
+  const url = `${MINUTE_HOST}/appstock/app/kline/mkline?param=${symbol},${period},,${count}`
+  try {
+    const res = await fetch(url, {
+      headers: { Referer: 'https://gu.qq.com/', 'User-Agent': 'Mozilla/5.0' },
+      signal,
+    })
+    if (!res.ok) return []
+    const json = await res.json()
+    const node = json?.data?.[symbol]
+    const list = node?.[period]
+    if (!Array.isArray(list) || !list.length) return []
+
+    const out = []
+    for (const item of list) {
+      const stamp = String(item[0] ?? '')
+      if (stamp.length < 12) continue
+      // 202611101458 → 2026-11-10 14:58
+      const time = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)} ${stamp.slice(8, 10)}:${stamp.slice(10, 12)}`
+      const close = Number(item[2])
+      const vol = Number(item[5])
+      if (!Number.isFinite(close)) continue
+      out.push({ time, close, volume: Number.isFinite(vol) ? vol : null })
+    }
+    return out.sort((a, b) => a.time.localeCompare(b.time))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 组装当日分时：池级加权**涨跌幅**曲线。
+ *
+ * ⚠️ 关键：必须归一化，不能直接平均绝对价格。
+ * 实测 510300 在 4.1 附近、159915 在 2.5 附近，直接按成交量加权会得到
+ * 3.16 ~ 1.18 这种跨度离谱、现实中不存在的「价格」——那只是把两个不同量级的
+ * 数字混在一起，没有任何含义。
+ *
+ * 正确做法：每只 ETF 先转成「相对当日第一笔的涨跌幅」，再加权平均。
+ * 这样曲线回答的是「池子整体今天涨了还是跌了、中途怎么走的」。
+ *
+ * 权重用各时点成交量：大 ETF 的走势更有代表性。
+ */
+export function buildMinuteSeries(perCode, { date = null } = {}) {
+  // 每只标的的基准价 = 它在当日的第一笔有效价格
+  const baselines = new Map()
+  for (let i = 0; i < perCode.length; i += 1) {
+    const pts = perCode[i]
+    if (!Array.isArray(pts) || !pts.length) continue
+    const firstValid = pts.find((p) => p.close && p.close > 0)
+    if (firstValid) baselines.set(i, firstValid.close)
+  }
+  if (!baselines.size) return []
+
+  const series = new Map() // time -> { sumPV, sumV }
+  perCode.forEach((pts, idx) => {
+    const base = baselines.get(idx)
+    if (!base || !Array.isArray(pts)) return
+    for (const p of pts) {
+      if (date && !p.time.startsWith(date)) continue
+      if (!p.close || p.close <= 0) continue
+      const pct = ((p.close - base) / base) * 100
+      const w = p.volume && p.volume > 0 ? p.volume : 1
+      const cur = series.get(p.time) ?? { sumPV: 0, sumV: 0 }
+      cur.sumPV += pct * w
+      cur.sumV += w
+      series.set(p.time, cur)
+    }
+  })
+  if (!series.size) return []
+
+  const out = []
+  let lastPct = 0
+  for (const t of [...series.keys()].sort()) {
+    const v = series.get(t)
+    const pct = v.sumV > 0 ? v.sumPV / v.sumV : lastPct
+    lastPct = pct
+    out.push({ time: t, pct: Math.round(pct * 100) / 100 })
+  }
+  return out
 }
 
 export { ymd }

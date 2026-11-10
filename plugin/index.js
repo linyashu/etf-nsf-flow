@@ -8,9 +8,17 @@
 
 import { BASKET, BENCH, UNIVERSE, basketCodes, buildPanel, computeSignals, fundDetail, fundSeries, groupSeries, heatmap, managerView, sectorMomentum } from './lib/analyze.js'
 import { compactToDash, fetchSSELatest, fetchSharesChunked } from './lib/sources.js'
+import { fetchSZSEshares, prevTradingDayGuess } from './lib/szse.js'
 import { Store } from './lib/store.js'
 import { marketTemperature } from './lib/market.js'
-import { buildIntraday, fetchQuotes, sessionProgress, todayBeijing } from './lib/intraday.js'
+import {
+  buildIntraday,
+  buildMinuteSeries,
+  fetchMinuteKline,
+  fetchQuotes,
+  sessionProgress,
+  todayBeijing,
+} from './lib/intraday.js'
 import { fetchHolderStructure } from './lib/wind.js'
 import { fmtDate, query, toObjects } from './lib/tushare.js'
 
@@ -181,6 +189,64 @@ export function apply(ctx, config = {}) {
 
     const { shares, quotes, benchRows, basics, sseSupplement, latestShareDate, chunks, storage, readMs } = acquired
 
+    // ── 深市份额补齐（深交所官方快照）──
+    // tushare 的深市回填极慢（实测 11-04 数据到 11-05 下午仍未入库），
+    // 而深交所官方列表能拿到 T-1 确认值，正好补上最新缺口。
+    //
+    // ⚠️ 深交所 metadata.subname 是页面日期，不是数据日期。
+    // 实测 11-10 页面拿到的值 == 库内 11-09（25/25 完全一致），
+    // 所以 trade_date 必须显式标记为「目标日」，由后端用完整度校验确认它到底是哪天。
+    let szseSupplement = null
+    if (store?.pool && !opts.asOf) {
+      try {
+        const szWanted = [...codeSet].filter((c) => c.endsWith('.SZ')).map((c) => c.split('.')[0])
+        const snap = await fetchSZSEshares(szWanted, { signal })
+        if (snap.shares.size >= szWanted.length * 0.8) {
+          // 判断快照对应哪个交易日：与库里已有的深市数据比对，
+          // 完全一致的那天就是它的真实数据日。比对不上说明是新的一天，用「昨天」兜底。
+          const existing = new Map()
+          for (const r of shares) {
+            if (!r.ts_code.endsWith('.SZ')) continue
+            const k = `${r.trade_date}|${r.ts_code}`
+            existing.set(k, Number(r.fd_share))
+          }
+          const candidateDates = [...new Set([...existing.keys()].map((k) => k.split('|')[0]))].sort().reverse().slice(0, 6)
+          let matchedDate = null
+          for (const d of candidateDates) {
+            let same = 0
+            let total = 0
+            for (const [code, vol] of snap.shares) {
+              const lib = existing.get(`${d}|${code}`)
+              if (lib === undefined) continue
+              total += 1
+              if (Math.abs(lib - vol) < 2) same += 1
+            }
+            if (total >= snap.shares.size * 0.8 && same >= total * 0.95) {
+              matchedDate = d
+              break
+            }
+          }
+          // 若与库内某天完全一致 → 那天已入库，无需补；
+          // 若都不一致 → 这是库内还没有的新数据，按「T-1」标记
+          if (!matchedDate) {
+            const guess = prevTradingDayGuess().replace(/-/g, '')
+            let added = 0
+            for (const [code, vol] of snap.shares) {
+              shares.push({ ts_code: code, trade_date: guess, fd_share: vol })
+              added += 1
+            }
+            if (added > 0) {
+              szseSupplement = { date: guess, funds: added, subname: snap.subname, matched: false }
+            }
+          } else {
+            szseSupplement = { date: matchedDate, funds: 0, subname: snap.subname, matched: true }
+          }
+        }
+      } catch {
+        // 官网不可达时静默降级，不影响主数据
+      }
+    }
+
     // ── 统计截止日选择 ──
     // 深市份额常滞后 1~2 天，最新日往往是「半边数据」，合计被系统性低估。
     // 让用户能选一个两边都齐的截止日，比看一个不完整的「最新」更有判断价值。
@@ -304,22 +370,43 @@ export function apply(ctx, config = {}) {
     //
     // 唯一不显示的情况：行情拉取失败或库不可用（真要报错的场景）。
     let intraday = null
+    let intradayError = null
     if (store?.pool) {
       try {
         const [quotes, avg] = await Promise.all([
           fetchQuotes(codes, { signal }),
           store.dailyAvgAmount(codes, 20),
         ])
+        // 分时曲线：只拉成交额 Top 8，避免 52 个请求把接口打挂。
+        // 8 只大 ETF 的加权价足以代表池子的日内走势。
+        let minuteSeries = null
+        if (quotes.size) {
+          try {
+            const topCodes = [...quotes.entries()]
+              .sort((a, b) => (b[1].amountYi ?? 0) - (a[1].amountYi ?? 0))
+              .slice(0, 8)
+              .map(([code]) => code)
+            const klines = await Promise.all(topCodes.map((c) => fetchMinuteKline(c, { signal })))
+            const merged = buildMinuteSeries(klines, { date: todayBeijing() })
+            minuteSeries = merged.length > 1 ? merged : null
+          } catch {
+            minuteSeries = null
+          }
+        }
+
         intraday = buildIntraday(quotes, avg, {
           now: new Date(),
           asOfDate: fmtDate(allDates[allDates.length - 1]),
+          minuteSeries,
         })
         if (intraday) {
           // isToday=false 时前端会标明「这是上一交易日的数据」，避免误读为今日
           intraday.isToday = intraday.asOfDate === todayBeijing()
         }
-      } catch {
+      } catch (err) {
+        // 静默失败曾导致整张卡消失且无法排查，至少要留痕
         intraday = null
+        intradayError = String(err?.message || err).slice(0, 200)
       }
     }
 
@@ -385,6 +472,7 @@ export function apply(ctx, config = {}) {
         shDate: fmtDate(dateOf('.SH')),
         szDate: fmtDate(dateOf('.SZ')),
         sseSupplement,
+        szseSupplement,
         shCount,
         szCount,
         shareChunks: chunks,
@@ -445,6 +533,7 @@ export function apply(ctx, config = {}) {
       managers,
       temperature,
       intraday,
+      intradayError,
       heatmap: heat,
       seriesGroups: gSeries,
       seriesFund: fSeries,
